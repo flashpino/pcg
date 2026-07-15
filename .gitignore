@@ -1,0 +1,8 @@
+node_modules/
+dist/
+.env
+*.log
+firmware/.pio/
+firmware/src/config.h
+server/firmware-bin/
+graphify-out/
