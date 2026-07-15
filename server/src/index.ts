@@ -3,6 +3,10 @@ import jwt from '@fastify/jwt';
 import Fastify from 'fastify';
 import { migrate, pool, seedAdmin } from './db/index.js';
 import { authRoutes } from './routes/auth.js';
+import { clientsRoutes } from './routes/clients.js';
+import { contactsRoutes } from './routes/contacts.js';
+import { provisionRoutes } from './routes/provision.js';
+import { sensorsRoutes } from './routes/sensors.js';
 
 // Env-check fatal: servidor meio-configurado em local remoto é o pior cenário.
 const REQUIRED_ENVS = [
@@ -18,7 +22,7 @@ if (missing.length > 0) {
 }
 
 // Rotas públicas: sem cookie/JWT exigido.
-const PUBLIC_ROUTES = ['/health', '/api/auth/login', '/api/ingest'];
+const PUBLIC_ROUTES = ['/health', '/api/auth/login', '/api/ingest', '/api/provision'];
 const isPublic = (url: string) => PUBLIC_ROUTES.includes(url.split('?')[0]) || url.startsWith('/api/ota/');
 
 const app = Fastify({ logger: true });
@@ -49,6 +53,10 @@ app.get('/health', async () => {
 });
 
 await app.register(authRoutes);
+await app.register(clientsRoutes);
+await app.register(sensorsRoutes);
+await app.register(contactsRoutes);
+await app.register(provisionRoutes);
 
 await migrate();
 await seedAdmin(process.env.ADMIN_EMAIL!, process.env.ADMIN_PASSWORD!);
