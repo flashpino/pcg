@@ -1,12 +1,15 @@
+import cookie from '@fastify/cookie';
+import jwt from '@fastify/jwt';
 import Fastify from 'fastify';
-import { migrate, pool } from './db/index.js';
+import { migrate, pool, seedAdmin } from './db/index.js';
+import { authRoutes } from './routes/auth.js';
 
 // Env-check fatal: servidor meio-configurado em local remoto é o pior cenário.
 const REQUIRED_ENVS = [
   'DATABASE_URL',
   'INFLUX_URL', 'INFLUX_TOKEN', 'INFLUX_ORG', 'INFLUX_BUCKET',
   'TWILIO_ACCOUNT_SID', 'TWILIO_AUTH_TOKEN', 'TWILIO_VOICE_FROM',
-  'JWT_SECRET',
+  'JWT_SECRET', 'ADMIN_EMAIL', 'ADMIN_PASSWORD',
 ];
 const missing = REQUIRED_ENVS.filter((k) => !process.env[k]);
 if (missing.length > 0) {
@@ -14,11 +17,27 @@ if (missing.length > 0) {
   process.exit(1);
 }
 
+// Rotas públicas: sem cookie/JWT exigido.
+const PUBLIC_ROUTES = ['/health', '/api/auth/login', '/api/ingest'];
+const isPublic = (url: string) => PUBLIC_ROUTES.includes(url.split('?')[0]) || url.startsWith('/api/ota/');
+
 const app = Fastify({ logger: true });
+
+await app.register(cookie);
+await app.register(jwt, { secret: process.env.JWT_SECRET!, cookie: { cookieName: 'token', signed: false } });
 
 app.setErrorHandler((err: Error & { statusCode?: number }, req, reply) => {
   req.log.error({ err }, 'unhandled error');
   reply.status(err.statusCode ?? 500).send({ error: err.message });
+});
+
+app.addHook('onRequest', async (req, reply) => {
+  if (isPublic(req.raw.url ?? '')) return;
+  try {
+    await req.jwtVerify();
+  } catch {
+    reply.status(401).send({ error: 'não autenticado' });
+  }
 });
 
 app.get('/health', async () => {
@@ -29,6 +48,9 @@ app.get('/health', async () => {
   return { db, influx };
 });
 
+await app.register(authRoutes);
+
 await migrate();
+await seedAdmin(process.env.ADMIN_EMAIL!, process.env.ADMIN_PASSWORD!);
 app.log.info('migração ok');
 await app.listen({ port: Number(process.env.PORT ?? 3000), host: '0.0.0.0' });

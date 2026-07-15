@@ -3,7 +3,7 @@
 **Plano**: `.claude/PRPs/plans/iot-monitoramento-temperatura.plan.md`
 **Protocolo**: 1 task = 1 sessão. Leia o plano (seção "Protocolo de Sessão") antes de tudo.
 
-## Task atual: 3
+## Task atual: 4
 
 ## Progresso
 
@@ -11,7 +11,7 @@
 |---|---|---|---|
 | 1 | Scaffold do monorepo | done | docs/sessions/task-01.md |
 | 2 | Bootstrap do server + migração | done | docs/sessions/task-02.md |
-| 3 | Auth admin | pending | — |
+| 3 | Auth admin | done | docs/sessions/task-03.md |
 | 4 | CRUD clients/sensors/contacts + provision | pending | — |
 | 5 | Ingest + escrita no Influx | pending | — |
 | 6 | alertService (máquina de estados + dedup) | pending | — |
