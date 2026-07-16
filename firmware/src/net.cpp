@@ -96,8 +96,15 @@ static bool ensureConnected() {
   }
   static const uint32_t BACKOFF_MS[] = {5000, 10000, 30000};
   uint32_t backoff = BACKOFF_MS[min<uint8_t>(consecutiveFailures - 1, 2)];
-  esp_task_wdt_reset();
-  delay(backoff);
+  // BUG real achado em bancada: delay(backoff) de até 30s inteiros, com um único
+  // esp_task_wdt_reset() antes — o watchdog (30s) disparava NO MEIO desse delay
+  // bloqueante e reiniciava o device (abort + reboot), toda vez que dava 3 falhas
+  // seguidas de WiFi. Por isso "piscava"/reiniciava sozinho. Fatiado em passos de
+  // 250ms com reset a cada um, igual ao loop de espera de conexão logo acima.
+  for (uint32_t waitedBackoff = 0; waitedBackoff < backoff; waitedBackoff += 250) {
+    esp_task_wdt_reset();
+    delay(250);
+  }
   return false;
 }
 
@@ -239,7 +246,12 @@ static void task(void* pvParameters) {
         provisioned = true;
       } else {
         publish(uiQueue, Status::PROVISION_FAILED, false, 0, 0, 0);
-        vTaskDelay(pdMS_TO_TICKS(30000));
+        // Mesmo bug do backoff de WiFi: 30s bloqueados sem esp_task_wdt_reset() no
+        // meio bate exatamente no timeout do watchdog (30s) e reinicia o device.
+        for (uint32_t waited = 0; waited < 30000; waited += 250) {
+          esp_task_wdt_reset();
+          delay(250);
+        }
         continue;
       }
     }
