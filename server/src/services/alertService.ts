@@ -136,7 +136,14 @@ async function evaluateType(sensor: Sensor, contacts: Contact[], type: AlertType
 
   const cliente = await clientNameOf(sensor);
   const valueVar = type === 'temperature' ? 'temperatura' : 'umidade';
-  const vars = { sensor: sensor.name, cliente, [valueVar]: value, min: bound.min ?? '-', max: bound.max ?? '-' };
+  const vars = {
+    sensor: sensor.name,
+    cliente,
+    local: sensor.local ?? '',
+    [valueVar]: value,
+    min: bound.min ?? '-',
+    max: bound.max ?? '-',
+  };
 
   if (transition === 'fire') {
     const texts = await renderMessage(`${type}_fire`, vars);
@@ -177,7 +184,7 @@ export async function evaluateConnectivity(sensor: Sensor, offline: boolean): Pr
 
   const contacts = await listContacts(sensor.client_id!);
   const cliente = await clientNameOf(sensor);
-  const vars = { sensor: sensor.name, cliente, segundos: sensor.offline_after_seconds };
+  const vars = { sensor: sensor.name, cliente, local: sensor.local ?? '', segundos: sensor.offline_after_seconds };
 
   if (transition === 'fire') {
     const texts = await renderMessage('connectivity_fire', vars);

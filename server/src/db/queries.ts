@@ -88,6 +88,7 @@ export interface Sensor {
   target_firmware: string | null;
   last_seen_at: string | null;
   last_firmware: string | null;
+  local: string | null;
   created_at: string;
 }
 
@@ -127,6 +128,7 @@ export interface SensorUpdate {
   target_firmware?: string | null;
   last_seen_at?: string;
   last_firmware?: string;
+  local?: string | null;
 }
 
 export const updateSensor = (id: number, patch: SensorUpdate) => {

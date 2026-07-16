@@ -12,6 +12,7 @@ interface Sensor {
   client_id: number | null;
   name: string;
   mac: string;
+  local: string | null;
   temp_min: number | null;
   temp_max: number | null;
   hum_min: number | null;
@@ -91,6 +92,7 @@ export function SensorsPage() {
           <tr>
             <th>Status</th>
             <th>Nome</th>
+            <th>Local</th>
             <th>MAC</th>
             <th>Cliente</th>
             <th>Temp min/max</th>
@@ -109,6 +111,13 @@ export function SensorsPage() {
                 <input
                   defaultValue={s.name}
                   onBlur={(e) => e.target.value !== s.name && patch(s, { name: e.target.value })}
+                />
+              </td>
+              <td>
+                <input
+                  placeholder="ex. câmara fria 2"
+                  defaultValue={s.local ?? ''}
+                  onBlur={(e) => e.target.value !== (s.local ?? '') && patch(s, { local: e.target.value || null })}
                 />
               </td>
               <td>{s.mac}</td>

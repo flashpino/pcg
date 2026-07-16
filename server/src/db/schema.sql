@@ -24,6 +24,8 @@ CREATE TABLE IF NOT EXISTS sensors (
   last_firmware TEXT,
   created_at TIMESTAMPTZ DEFAULT now()
 );
+-- Texto livre (ex. "câmara fria 2", "sala do servidor") — disponível como {{$local}} nas mensagens.
+ALTER TABLE sensors ADD COLUMN IF NOT EXISTS local TEXT;
 
 CREATE TABLE IF NOT EXISTS contacts (
   id SERIAL PRIMARY KEY,
