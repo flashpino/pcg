@@ -146,8 +146,12 @@ static void buildDashboard() {
   dateLabel = lv_label_create(clockGroup);
   lv_label_set_text(dateLabel, "");
 
+  // Escondido a pedido — header só com relógio/status à esquerda e sinal à direita.
+  // O label continua existindo (não usado no header) porque a tela de renomear device
+  // ainda escreve nele; mantém o ponteiro válido sem precisar mexer nesse outro fluxo.
   deviceNameLabel = lv_label_create(header);
   lv_label_set_text(deviceNameLabel, storage::loadDeviceName().c_str());
+  lv_obj_add_flag(deviceNameLabel, LV_OBJ_FLAG_HIDDEN);
 
   lv_obj_t* signalGroup = lv_obj_create(header);
   lv_obj_set_size(signalGroup, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
