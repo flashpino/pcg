@@ -22,9 +22,9 @@ const LEGEND: Record<string, string[]> = {
   temperature_resolve: ['sensor', 'local', 'cliente', 'temperatura', 'min', 'max', 'limite'],
   humidity_fire: ['sensor', 'local', 'cliente', 'umidade', 'min', 'max', 'limite'],
   humidity_resolve: ['sensor', 'local', 'cliente', 'umidade', 'min', 'max', 'limite'],
-  connectivity_fire: ['sensor', 'local', 'cliente', 'segundos'],
-  connectivity_resolve: ['sensor', 'local', 'cliente', 'segundos'],
-  connectivity_renotify: ['sensor', 'local', 'cliente', 'segundos'],
+  connectivity_fire: ['sensor', 'local', 'cliente', 'temperatura', 'min', 'max', 'limite', 'segundos'],
+  connectivity_resolve: ['sensor', 'local', 'cliente', 'temperatura', 'min', 'max', 'limite', 'segundos'],
+  connectivity_renotify: ['sensor', 'local', 'cliente', 'temperatura', 'min', 'max', 'limite', 'segundos'],
 };
 
 function TemplateForm({ tpl, onSaved }: { tpl: Template; onSaved: () => void }) {
