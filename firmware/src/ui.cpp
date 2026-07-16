@@ -269,11 +269,14 @@ static void updateHeader() {
   bool online = lastNetEvent.status == net::Status::ONLINE;
   lv_obj_set_style_bg_color(statusDot, online ? lv_palette_main(LV_PALETTE_GREEN) : lv_palette_main(LV_PALETTE_GREY), 0);
 
-  const char* bars = "▂";  // fraco
+  // ASCII puro — os caracteres de bloco Unicode (▂▄▆█) não existem no subset de fonte
+  // compilado (lv_conf.h só habilita LV_FONT_MONTSERRAT_*, sem esse range), e viravam
+  // caixinha vazia (tofu) na tela real (achado em bancada).
+  const char* bars = "|";  // fraco
   int32_t rssi = lastNetEvent.rssi;
-  if (rssi > -55) bars = "▂▄▆█";       // ótimo
-  else if (rssi > -67) bars = "▂▄▆";   // bom
-  else if (rssi > -78) bars = "▂▄";    // fraco
+  if (rssi > -55) bars = "||||";       // ótimo
+  else if (rssi > -67) bars = "|||";   // bom
+  else if (rssi > -78) bars = "||";    // fraco
   lv_label_set_text(rssiLabel, bars);
 }
 
@@ -594,7 +597,13 @@ static void feedCalibrationRaw(uint16_t rawX, uint16_t rawY) {
     cal.yMax = (calibRawY[2] + calibRawY[3]) / 2;
     storage::saveTouchCalibration(cal);
     calib = cal;
-    showDashboard();
+    // Mesma checagem do boot (begin(), linha ~646) — sem isso, calibrar sempre caía
+    // direto no dashboard vazio, mesmo sem WiFi configurado ainda.
+    if (!storage::hasWifiCredentials()) {
+      showWifiList();
+    } else {
+      showDashboard();
+    }
   } else {
     placeCalibTarget();
   }
