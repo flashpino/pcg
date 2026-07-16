@@ -40,6 +40,14 @@ export function isBackInBounds(value: number, bound: Bound): boolean {
   return true;
 }
 
+// Qual limite (min ou max) foi de fato ultrapassado — pra mensagem poder mostrar "o limite"
+// sem o admin precisar saber de antemão se o alerta veio de baixo ou de cima da faixa.
+export function violatedBound(value: number, bound: Bound): number | string {
+  if (bound.max !== null && value > bound.max) return bound.max;
+  if (bound.min !== null && value < bound.min) return bound.min;
+  return bound.max ?? bound.min ?? '-';
+}
+
 export function decideTransition(value: number, bound: Bound, firing: boolean): Transition {
   if (firing) {
     // Enquanto não voltar 0.5 para dentro do limite (zona morta da histerese), continua firing.
@@ -151,6 +159,7 @@ async function evaluateType(
     [valueVar]: value,
     min: bound.min ?? '-',
     max: bound.max ?? '-',
+    limite: violatedBound(value, bound),
   };
 
   if (transition === 'fire') {

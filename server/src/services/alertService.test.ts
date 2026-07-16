@@ -1,5 +1,19 @@
 import { describe, expect, it } from 'vitest';
-import { decideBinaryTransition, decideTransition, shouldRenotify } from './alertService.js';
+import { decideBinaryTransition, decideTransition, shouldRenotify, violatedBound } from './alertService.js';
+
+describe('violatedBound', () => {
+  it('valor acima do max retorna o max (violação por cima)', () => {
+    expect(violatedBound(30, { min: 10, max: 27 })).toBe(27);
+  });
+
+  it('valor abaixo do min retorna o min (violação por baixo) — não o max', () => {
+    expect(violatedBound(23.4, { min: 25, max: 27 })).toBe(25);
+  });
+
+  it('sem violação (dentro da faixa) cai no max como fallback', () => {
+    expect(violatedBound(20, { min: 10, max: 27 })).toBe(27);
+  });
+});
 
 describe('decideTransition', () => {
   it('dispara 1x ao sair do limite sem alerta firing', () => {

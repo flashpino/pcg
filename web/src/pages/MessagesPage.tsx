@@ -18,10 +18,10 @@ const LABELS: Record<string, string> = {
 };
 
 const LEGEND: Record<string, string[]> = {
-  temperature_fire: ['sensor', 'local', 'cliente', 'temperatura', 'min', 'max'],
-  temperature_resolve: ['sensor', 'local', 'cliente', 'temperatura', 'min', 'max'],
-  humidity_fire: ['sensor', 'local', 'cliente', 'umidade', 'min', 'max'],
-  humidity_resolve: ['sensor', 'local', 'cliente', 'umidade', 'min', 'max'],
+  temperature_fire: ['sensor', 'local', 'cliente', 'temperatura', 'min', 'max', 'limite'],
+  temperature_resolve: ['sensor', 'local', 'cliente', 'temperatura', 'min', 'max', 'limite'],
+  humidity_fire: ['sensor', 'local', 'cliente', 'umidade', 'min', 'max', 'limite'],
+  humidity_resolve: ['sensor', 'local', 'cliente', 'umidade', 'min', 'max', 'limite'],
   connectivity_fire: ['sensor', 'local', 'cliente', 'segundos'],
   connectivity_resolve: ['sensor', 'local', 'cliente', 'segundos'],
   connectivity_renotify: ['sensor', 'local', 'cliente', 'segundos'],
