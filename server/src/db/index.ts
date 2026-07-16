@@ -2,6 +2,11 @@ import { readFileSync } from 'node:fs';
 import bcrypt from 'bcryptjs';
 import pg from 'pg';
 
+// node-postgres devolve NUMERIC (temp_min/max, hum_min/max, alerts.value) como STRING por
+// padrão, pra não arriscar perda de precisão — mas isso quebra aritmética (ex. "15" + 0.5 vira
+// "150.5" por concatenação, não 15.5). OID 1700 = numeric. Corrige globalmente, pro app inteiro.
+pg.types.setTypeParser(1700, (val) => parseFloat(val));
+
 export const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
 
 // Migração idempotente: executa schema.sql (tudo IF NOT EXISTS) a cada boot.

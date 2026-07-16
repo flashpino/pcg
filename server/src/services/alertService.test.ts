@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { decideBinaryTransition, decideTransition, shouldRenotify, violatedBound } from './alertService.js';
+import { decideBinaryTransition, decideTransition, isBackInBounds, shouldRenotify, violatedBound } from './alertService.js';
+
+describe('isBackInBounds', () => {
+  // Regressão: node-postgres devolve NUMERIC como string. "15" + 0.5 concatena ("150.5") em vez
+  // de somar (15.5), fazendo o alerta nunca resolver quando havia um mínimo configurado.
+  it('min chegando como string (NUMERIC do Postgres) ainda resolve corretamente', () => {
+    const bound = { min: '15' as unknown as number, max: 27 };
+    expect(isBackInBounds(23.8, bound)).toBe(true);
+  });
+});
 
 describe('violatedBound', () => {
   it('valor acima do max retorna o max (violação por cima)', () => {

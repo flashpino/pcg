@@ -34,9 +34,11 @@ export function isOutOfBounds(value: number, bound: Bound): boolean {
 }
 
 // Histerese: só considera "voltou ao normal" 0.5 dentro do limite — evita flapping no limiar.
+// Number(...) no min é defesa contra bound vir como string (NUMERIC do Postgres): "15" + 0.5
+// concatena texto ("150.5") em vez de somar — já causou um alerta preso em "firing" pra sempre.
 export function isBackInBounds(value: number, bound: Bound): boolean {
   if (bound.max !== null && value > bound.max - HYSTERESIS) return false;
-  if (bound.min !== null && value < bound.min + HYSTERESIS) return false;
+  if (bound.min !== null && value < Number(bound.min) + HYSTERESIS) return false;
   return true;
 }
 
