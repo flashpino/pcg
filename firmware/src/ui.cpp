@@ -8,6 +8,7 @@
 #include <WiFi.h>
 #include <XPT2046_Touchscreen.h>
 #include <lvgl.h>
+#include <string.h>
 #include <time.h>
 
 namespace ui {
@@ -64,6 +65,7 @@ static lv_obj_t* dateLabel;
 static lv_obj_t* deviceNameLabel;
 static lv_obj_t* rssiLabel;
 static lv_obj_t* tempValueLabel;
+static lv_obj_t* tempFracLabel;
 static lv_obj_t* tempMinMaxLabel;
 static lv_obj_t* tempChart;
 static lv_chart_series_t* tempSeries;
@@ -173,8 +175,16 @@ static void buildDashboard() {
 
   tempValueLabel = lv_label_create(tempPanel);
   lv_obj_set_style_text_font(tempValueLabel, &lv_font_montserrat_32, 0);
-  lv_label_set_text(tempValueLabel, "--.-");
-  lv_obj_align(tempValueLabel, LV_ALIGN_TOP_MID, 0, 20);
+  // Maior que a fonte compilada (32pt é o teto do lv_conf.h — Flash já em 95%, ver Task
+  // 13 — sem espaço pra habilitar mais um tamanho) via zoom de estilo, sem custo de Flash.
+  lv_obj_set_style_transform_zoom(tempValueLabel, 360, 0);  // 256 = 100%
+  lv_label_set_text(tempValueLabel, "--");
+  lv_obj_align(tempValueLabel, LV_ALIGN_TOP_LEFT, 14, 24);
+
+  tempFracLabel = lv_label_create(tempPanel);
+  lv_obj_set_style_text_font(tempFracLabel, &lv_font_montserrat_14, 0);
+  lv_label_set_text(tempFracLabel, ".-");
+  lv_obj_align_to(tempFracLabel, tempValueLabel, LV_ALIGN_OUT_RIGHT_BOTTOM, 4, -2);
 
   tempChart = lv_chart_create(tempPanel);
   lv_obj_set_size(tempChart, SCREEN_W / 2 - 20, 60);
@@ -204,8 +214,9 @@ static void buildDashboard() {
 
   humValueLabel = lv_label_create(humPanel);
   lv_obj_set_style_text_font(humValueLabel, &lv_font_montserrat_32, 0);
-  lv_label_set_text(humValueLabel, "--.-");
-  lv_obj_align(humValueLabel, LV_ALIGN_TOP_MID, 0, 20);
+  lv_obj_set_style_transform_zoom(humValueLabel, 360, 0);
+  lv_label_set_text(humValueLabel, "--");
+  lv_obj_align(humValueLabel, LV_ALIGN_TOP_LEFT, 14, 24);
 
   humChart = lv_chart_create(humPanel);
   lv_obj_set_size(humChart, SCREEN_W / 2 - 20, 60);
@@ -231,9 +242,14 @@ static void showDashboard() {
 // Chamado a cada net::Event ONLINE com leitura nova — atualiza valores, sparkline e max/min do dia.
 static void updateDashboardReading(float temp, float hum) {
   char buf[16];
-  snprintf(buf, sizeof(buf), "%.1f°C", temp);
+  snprintf(buf, sizeof(buf), "%.1f", temp);
+  char* dot = strchr(buf, '.');
+  if (dot) *dot = '\0';  // corta em duas strings: parte inteira (buf) e fração (dot+1)
   lv_label_set_text(tempValueLabel, buf);
-  snprintf(buf, sizeof(buf), "%.0f%%", hum);
+  char fracBuf[4] = ".";
+  strlcat(fracBuf, dot ? dot + 1 : "0", sizeof(fracBuf));
+  lv_label_set_text(tempFracLabel, fracBuf);
+  snprintf(buf, sizeof(buf), "%.0f", hum);
   lv_label_set_text(humValueLabel, buf);
 
   lv_chart_set_next_value(tempChart, tempSeries, (lv_coord_t)(temp * 10));
