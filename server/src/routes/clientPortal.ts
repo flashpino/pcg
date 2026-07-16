@@ -9,7 +9,7 @@ import { queryReadings } from '../services/influx.js';
 export async function clientPortalRoutes(app: FastifyInstance): Promise<void> {
   app.post<{ Body: { email: string; password: string } }>('/api/client/login', async (req, reply) => {
     const { email, password } = req.body ?? {};
-    const client = email && (await getClientByEmail(email));
+    const client = email && (await getClientByEmail(email.trim().toLowerCase()));
     if (!client || !client.password_hash || !(await bcrypt.compare(password ?? '', client.password_hash))) {
       throw Object.assign(new Error('credenciais inválidas'), { statusCode: 401 });
     }

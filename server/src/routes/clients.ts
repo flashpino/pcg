@@ -41,7 +41,8 @@ export async function clientsRoutes(app: FastifyInstance): Promise<void> {
         throw Object.assign(new Error('email e senha (mín. 8 caracteres) obrigatórios'), { statusCode: 400 });
       }
       const hash = await bcrypt.hash(password, 10);
-      const client = await setClientCredentials(Number(req.params.id), email, hash);
+      // Normaliza pra bater com o mesmo tratamento no login — email não é case-sensitive pro usuário.
+      const client = await setClientCredentials(Number(req.params.id), email.trim().toLowerCase(), hash);
       if (!client) throw Object.assign(new Error('cliente não encontrado'), { statusCode: 404 });
       return client;
     },
