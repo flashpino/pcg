@@ -191,7 +191,7 @@ export const createContact = (input: ContactInput) =>
         (client_id, name, phone, alert_temperature, alert_connectivity, channel_voice, channel_whatsapp,
          renotify_minutes, days_of_week, window_start, window_end, timezone)
        VALUES ($1, $2, $3, COALESCE($4, true), COALESCE($5, true), COALESCE($6, true), COALESCE($7, true),
-               COALESCE($8, 60), COALESCE($9, '{1,2,3,4,5}'::integer[]), COALESCE($10, '07:00'), COALESCE($11, '18:00'),
+               COALESCE($8, 60), COALESCE($9, '{1,2,3,4,5}'::integer[]), COALESCE($10, '07:00'::time), COALESCE($11, '18:00'::time),
                COALESCE($12, 'America/Sao_Paulo'))
        RETURNING *`,
       [
