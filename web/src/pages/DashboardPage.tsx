@@ -71,7 +71,10 @@ export function DashboardPage() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    api.get<DashboardData>('/api/dashboard').then(setData).catch((err) => setError(err.message));
+    const load = () => api.get<DashboardData>('/api/dashboard').then(setData).catch((err) => setError(err.message));
+    load();
+    const id = setInterval(load, 30_000);
+    return () => clearInterval(id);
   }, []);
 
   if (error) return <main><p className="error">{error}</p></main>;

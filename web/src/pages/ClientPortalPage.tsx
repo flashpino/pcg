@@ -30,8 +30,13 @@ export function ClientPortalPage() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    api.get<Sensor[]>('/api/client/sensors').then(setSensors).catch((err) => setError(err.message));
-    api.get<Alert[]>('/api/client/alerts').then(setAlerts).catch((err) => setError(err.message));
+    const load = () => {
+      api.get<Sensor[]>('/api/client/sensors').then(setSensors).catch((err) => setError(err.message));
+      api.get<Alert[]>('/api/client/alerts').then(setAlerts).catch((err) => setError(err.message));
+    };
+    load();
+    const id = setInterval(load, 30_000);
+    return () => clearInterval(id);
   }, []);
 
   return (
