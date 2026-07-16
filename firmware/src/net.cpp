@@ -86,7 +86,7 @@ static bool ensureConnected() {
 
   if (WiFi.status() == WL_CONNECTED) {
     consecutiveFailures = 0;
-    configTime(0, 0, "pool.ntp.org", "time.nist.gov");
+    configTime(-3 * 3600, 0, "pool.ntp.org", "time.nist.gov");  // America/Sao_Paulo, sem DST desde 2019
     return true;
   }
 
@@ -200,9 +200,11 @@ static IngestResult sendIngest(const Reading* batch, size_t count) {
 }
 
 // --- Task principal ---------------------------------------------------------------------------
-// Sem sincronizar interval_seconds do server (exigiria uma rota nova, fora do contrato do
-// plano) — intervalo fixo de 60s, igual ao default de sensors.interval_seconds no schema.
-static const uint32_t READ_INTERVAL_MS = 60000;
+// Amostra o DHT22 a cada 10s (dashboard/sparkline mais responsivos) mas só envia pro
+// servidor a cada 60s (igual ao default de sensors.interval_seconds no schema) — as
+// leituras entre um envio e outro ficam no ring buffer e vão todas no próximo lote.
+static const uint32_t READ_INTERVAL_MS = 10000;
+static const uint32_t SEND_INTERVAL_MS = 60000;
 
 static void publish(QueueHandle_t uiQueue, Status status, bool hasReading, float temp, float hum, int16_t rssi) {
   Event evt{status, hasReading, temp, hum, rssi};
@@ -215,6 +217,7 @@ static void task(void* pvParameters) {
   dht.begin();  // faltava — sem isso a lib nunca configura o pino, toda leitura dá NaN
 
   bool provisioned = storage::hasDeviceToken();
+  uint32_t lastSendMs = 0;  // primeiro envio acontece ~60s depois do boot, igual antes
 
   for (;;) {
     esp_task_wdt_reset();
@@ -247,16 +250,19 @@ static void task(void* pvParameters) {
       ringPush(Reading{temp, hum, static_cast<int16_t>(WiFi.RSSI()), millis()});
     }
 
-    // Drena o buffer em lotes de 20 até esvaziar ou até um POST falhar (fica pro próximo ciclo).
-    while (ringCount > 0) {
-      Reading batch[20];
-      size_t n = ringPeekBatch(batch, 20);
-      IngestResult result = sendIngest(batch, n);
-      if (!result.ok) break;
-      ringPop(n);
-      if (result.otaUrl.length() > 0 && ringCount == 0) {
-        // Nunca OTA com buffer não-drenado (GOTCHA da Task 12).
-        runOta(result.otaUrl);
+    if (millis() - lastSendMs >= SEND_INTERVAL_MS) {
+      lastSendMs = millis();
+      // Drena o buffer em lotes de 20 até esvaziar ou até um POST falhar (fica pro próximo ciclo).
+      while (ringCount > 0) {
+        Reading batch[20];
+        size_t n = ringPeekBatch(batch, 20);
+        IngestResult result = sendIngest(batch, n);
+        if (!result.ok) break;
+        ringPop(n);
+        if (result.otaUrl.length() > 0 && ringCount == 0) {
+          // Nunca OTA com buffer não-drenado (GOTCHA da Task 12).
+          runOta(result.otaUrl);
+        }
       }
     }
 

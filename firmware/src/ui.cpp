@@ -680,7 +680,15 @@ void tick() {
   }
 
   pollWifiScan();
-  updateHeader();
+
+  // updateHeader() reescreve relógio/data/sinal (invalida e redesenha widgets) — chamar
+  // isso a ~200Hz (tick() roda a cada 5ms no loop principal) causava o piscar visível na
+  // tela real. Granularidade de 1s já é mais que suficiente (relógio é HH:MM).
+  static uint32_t lastHeaderUpdate = 0;
+  if (millis() - lastHeaderUpdate >= 1000) {
+    lastHeaderUpdate = millis();
+    updateHeader();
+  }
 }
 
 // Chamado por main.cpp a cada net::Event novo lido da fila.
