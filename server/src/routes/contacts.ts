@@ -1,12 +1,25 @@
 import type { FastifyInstance } from 'fastify';
 import {
   createContact,
+  createNotification,
+  createResolvedAlert,
   deleteContact,
   getContact,
   listContacts,
+  listSensors,
   updateContact,
   type ContactInput,
 } from '../db/queries.js';
+import { enqueueVoice, enqueueWhatsapp } from '../services/notifier.js';
+
+// Boas-vindas/teste não são alertas reais, mas notifications.alert_id é NOT NULL — pendura
+// num alerta sintético já resolvido no primeiro sensor do cliente (Tasks 8/8b usam o mesmo padrão).
+async function syntheticAlertFor(clientId: number, message: string) {
+  const sensors = await listSensors(clientId);
+  const sensor = sensors[0];
+  if (!sensor) throw Object.assign(new Error('cliente sem sensor cadastrado'), { statusCode: 400 });
+  return createResolvedAlert(sensor.id, 'test', message);
+}
 
 export async function contactsRoutes(app: FastifyInstance): Promise<void> {
   app.get<{ Querystring: { clientId?: string } }>('/api/contacts', async (req) => {
@@ -39,5 +52,34 @@ export async function contactsRoutes(app: FastifyInstance): Promise<void> {
     const ok = await deleteContact(Number(req.params.id));
     if (!ok) throw Object.assign(new Error('contato não encontrado'), { statusCode: 404 });
     reply.status(204);
+  });
+
+  app.post<{ Params: { id: string } }>('/api/contacts/:id/welcome', async (req) => {
+    const contact = await getContact(Number(req.params.id));
+    if (!contact) throw Object.assign(new Error('contato não encontrado'), { statusCode: 404 });
+
+    const alert = await syntheticAlertFor(contact.client_id, `Boas-vindas para ${contact.name}`);
+    const template = process.env.WELCOME_TEMPLATE ?? 'Olá {{name}}! Você foi cadastrado no monitoramento PCG.';
+    const text = template.replace('{{name}}', contact.name);
+    const notification = await createNotification(alert.id, contact.id, 'whatsapp', 'queued', 'welcome');
+    await enqueueWhatsapp({ notificationId: notification.id, phone: contact.phone, text });
+    return { ok: true };
+  });
+
+  app.post<{ Params: { id: string } }>('/api/contacts/:id/test', async (req) => {
+    const contact = await getContact(Number(req.params.id));
+    if (!contact) throw Object.assign(new Error('contato não encontrado'), { statusCode: 404 });
+
+    const alert = await syntheticAlertFor(contact.client_id, `Teste manual para ${contact.name}`);
+    const text = `Teste PCG: canal de notificação de ${contact.name} funcionando.`;
+    if (contact.channel_whatsapp) {
+      const n = await createNotification(alert.id, contact.id, 'whatsapp', 'queued', 'test');
+      await enqueueWhatsapp({ notificationId: n.id, phone: contact.phone, text });
+    }
+    if (contact.channel_voice) {
+      const n = await createNotification(alert.id, contact.id, 'voice', 'queued', 'test');
+      await enqueueVoice({ notificationId: n.id, phone: contact.phone, text });
+    }
+    return { ok: true };
   });
 }

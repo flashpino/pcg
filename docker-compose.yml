@@ -1,3 +1,10 @@
+# Uso local / VPS sem painel: `docker compose up -d`.
+#
+# EasyPanel: use o "App Service" apontando pro repo (ele builda do Dockerfile da raiz
+# direto, sem ler este arquivo) + o serviço de banco "Postgres" nativo do EasyPanel —
+# é o caminho suportado e documentado. NÃO cole este arquivo no "Compose Service" do
+# EasyPanel: ele roda em Docker Swarm, que não suporta `build:` (só `image:` já publicada),
+# `env_file:` (só `environment:` inline) nem `depends_on: condition: service_healthy`.
 services:
   postgres:
     image: postgres:16-alpine
@@ -15,7 +22,7 @@ services:
       retries: 5
 
   server:
-    build: ./server
+    build: .
     restart: always
     env_file: .env
     environment:
@@ -23,7 +30,7 @@ services:
     ports:
       - "3000:3000"
     volumes:
-      - firmware-bin:/app/firmware-bin
+      - firmware-bin:/app/server/firmware-bin
     depends_on:
       postgres:
         condition: service_healthy

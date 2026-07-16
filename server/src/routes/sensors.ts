@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { deleteSensor, getSensor, listSensors, updateSensor, type SensorUpdate } from '../db/queries.js';
+import { queryReadings } from '../services/influx.js';
 
 export async function sensorsRoutes(app: FastifyInstance): Promise<void> {
   // Sensores nascem via /api/provision. CRUD aqui só lista, atribui cliente/nome/limites e remove.
@@ -24,5 +25,11 @@ export async function sensorsRoutes(app: FastifyInstance): Promise<void> {
     const ok = await deleteSensor(Number(req.params.id));
     if (!ok) throw Object.assign(new Error('sensor não encontrado'), { statusCode: 404 });
     reply.status(204);
+  });
+
+  app.get<{ Params: { id: string }; Querystring: { range?: string } }>('/api/sensors/:id/readings', async (req) => {
+    const sensor = await getSensor(Number(req.params.id));
+    if (!sensor) throw Object.assign(new Error('sensor não encontrado'), { statusCode: 404 });
+    return queryReadings(sensor.id, req.query.range ?? '24h');
   });
 }

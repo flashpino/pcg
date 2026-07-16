@@ -82,6 +82,8 @@ export interface SensorUpdate {
   interval_seconds?: number;
   offline_after_seconds?: number;
   target_firmware?: string | null;
+  last_seen_at?: string;
+  last_firmware?: string;
 }
 
 export const updateSensor = (id: number, patch: SensorUpdate) => {
@@ -178,3 +180,134 @@ export const updateContact = (id: number, patch: Partial<ContactInput>) => {
 
 export const deleteContact = (id: number) =>
   pool.query('DELETE FROM contacts WHERE id = $1', [id]).then((r) => r.rowCount! > 0);
+
+export interface Alert {
+  id: number;
+  sensor_id: number;
+  type: 'temperature' | 'humidity' | 'connectivity' | 'test';
+  state: 'firing' | 'resolved';
+  value: number | null;
+  message: string;
+  fired_at: string;
+  resolved_at: string | null;
+}
+
+export const getFiringAlert = (sensorId: number, type: Alert['type']) =>
+  pool
+    .query<Alert>("SELECT * FROM alerts WHERE sensor_id = $1 AND type = $2 AND state = 'firing'", [sensorId, type])
+    .then((r) => r.rows[0]);
+
+// ON CONFLICT casa com o índice parcial alerts_one_firing — dedup contra corrida concorrente.
+// undefined de volta = outra escrita já criou o alerta firing antes desta.
+export const createAlert = (sensorId: number, type: Alert['type'], value: number | null, message: string) =>
+  pool
+    .query<Alert>(
+      `INSERT INTO alerts (sensor_id, type, state, value, message)
+       VALUES ($1, $2, 'firing', $3, $4)
+       ON CONFLICT (sensor_id, type) WHERE state = 'firing' DO NOTHING
+       RETURNING *`,
+      [sensorId, type, value, message],
+    )
+    .then((r) => r.rows[0]);
+
+// Alerta sintético já resolvido — usado por welcome/test/teste-semanal (Tasks 8/8b), que
+// precisam de um alert_id para pendurar a notification mas não representam um firing real.
+export const createResolvedAlert = (sensorId: number, type: Alert['type'], message: string) =>
+  pool
+    .query<Alert>(
+      "INSERT INTO alerts (sensor_id, type, state, message, resolved_at) VALUES ($1, $2, 'resolved', $3, now()) RETURNING *",
+      [sensorId, type, message],
+    )
+    .then((r) => r.rows[0]);
+
+export const resolveAlert = (id: number) =>
+  pool
+    .query<Alert>("UPDATE alerts SET state = 'resolved', resolved_at = now() WHERE id = $1 RETURNING *", [id])
+    .then((r) => r.rows[0]);
+
+export interface Notification {
+  id: number;
+  alert_id: number;
+  contact_id: number;
+  channel: 'voice' | 'whatsapp';
+  status: string;
+  detail: string | null;
+  created_at: string;
+}
+
+export const createNotification = (
+  alertId: number,
+  contactId: number,
+  channel: Notification['channel'],
+  status = 'queued',
+  detail: string | null = null,
+) =>
+  pool
+    .query<Notification>(
+      'INSERT INTO notifications (alert_id, contact_id, channel, status, detail) VALUES ($1, $2, $3, $4, $5) RETURNING *',
+      [alertId, contactId, channel, status, detail],
+    )
+    .then((r) => r.rows[0]);
+
+export const getLastNotification = (alertId: number, contactId: number, channel: Notification['channel']) =>
+  pool
+    .query<Notification>(
+      'SELECT * FROM notifications WHERE alert_id = $1 AND contact_id = $2 AND channel = $3 ORDER BY created_at DESC LIMIT 1',
+      [alertId, contactId, channel],
+    )
+    .then((r) => r.rows[0]);
+
+export interface AlertWithNotifications extends Alert {
+  notifications: Notification[];
+}
+
+// 2 queries (sem N+1): busca os alertas, depois todas as notifications deles de uma vez.
+export const listAlerts = async (state?: Alert['state']): Promise<AlertWithNotifications[]> => {
+  const alerts = await (
+    state
+      ? pool.query<Alert>('SELECT * FROM alerts WHERE state = $1 ORDER BY fired_at DESC', [state])
+      : pool.query<Alert>('SELECT * FROM alerts ORDER BY fired_at DESC')
+  ).then((r) => r.rows);
+  if (alerts.length === 0) return [];
+
+  const notifications = await pool
+    .query<Notification>('SELECT * FROM notifications WHERE alert_id = ANY($1) ORDER BY created_at', [
+      alerts.map((a) => a.id),
+    ])
+    .then((r) => r.rows);
+
+  const byAlert = new Map<number, Notification[]>();
+  for (const n of notifications) byAlert.set(n.alert_id, [...(byAlert.get(n.alert_id) ?? []), n]);
+  return alerts.map((a) => ({ ...a, notifications: byAlert.get(a.id) ?? [] }));
+};
+
+export const updateNotificationStatus = (id: number, status: string, detail: string | null = null) =>
+  pool
+    .query<Notification>('UPDATE notifications SET status = $2, detail = $3 WHERE id = $1 RETURNING *', [
+      id,
+      status,
+      detail,
+    ])
+    .then((r) => r.rows[0]);
+
+export interface Firmware {
+  id: number;
+  version: string;
+  filename: string;
+  sha256: string;
+  created_at: string;
+}
+
+export const listFirmwares = () =>
+  pool.query<Firmware>('SELECT * FROM firmware ORDER BY created_at DESC').then((r) => r.rows);
+
+export const getFirmwareByVersion = (version: string) =>
+  pool.query<Firmware>('SELECT * FROM firmware WHERE version = $1', [version]).then((r) => r.rows[0]);
+
+export const createFirmware = (version: string, filename: string, sha256: string) =>
+  pool
+    .query<Firmware>(
+      'INSERT INTO firmware (version, filename, sha256) VALUES ($1, $2, $3) RETURNING *',
+      [version, filename, sha256],
+    )
+    .then((r) => r.rows[0]);

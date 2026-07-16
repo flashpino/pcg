@@ -1,0 +1,6 @@
+#pragma once
+
+// Copie para config.h (gitignored) e preencha. Binário universal — nada específico
+// por device aqui; WiFi e device_token vivem no NVS (ver storage.h).
+#define SERVER_URL "https://seu-servidor.example.com"
+#define FW_VERSION "1.0.0"

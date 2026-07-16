@@ -13,4 +13,15 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
     reply.setCookie('token', token, { httpOnly: true, path: '/', sameSite: 'lax' });
     return { ok: true };
   });
+
+  // Cookie é httpOnly — o painel não tem outro jeito de saber se está logado.
+  app.get('/api/auth/me', async (req) => {
+    const { email } = req.user as { email: string };
+    return { email };
+  });
+
+  app.post('/api/auth/logout', async (_req, reply) => {
+    reply.clearCookie('token', { path: '/' });
+    return { ok: true };
+  });
 }
