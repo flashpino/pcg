@@ -145,6 +145,84 @@ button.danger {
   padding: 1rem;
   margin-bottom: 1rem;
 }
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+.kpi-tile {
+  background: var(--steel);
+  border: 1px solid var(--steel-line);
+  border-top: 3px solid var(--amber);
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+.kpi-value {
+  font-family: "Consolas", "Courier New", monospace;
+  font-size: 2rem;
+  font-weight: 700;
+  color: var(--ink);
+}
+.kpi-label {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #8a8f98;
+}
+.device-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+.device-card {
+  background: var(--steel);
+  border: 1px solid var(--steel-line);
+  padding: 0.9rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  font-family: "Consolas", "Courier New", monospace;
+}
+.device-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.device-card-readings {
+  display: flex;
+  gap: 1rem;
+  font-size: 1.4rem;
+  font-weight: 700;
+}
+.device-card-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.78rem;
+  color: #8a8f98;
+}
+.signal-bars {
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 2px;
+}
+.signal-bars i {
+  display: inline-block;
+  width: 4px;
+  font-style: normal;
+}
+.signal-bars i:nth-child(1) { height: 5px; }
+.signal-bars i:nth-child(2) { height: 8px; }
+.signal-bars i:nth-child(3) { height: 11px; }
+.signal-bars i:nth-child(4) { height: 14px; }
+.signal-bars i.bar-on { background: var(--ok); }
+.signal-bars i.bar-off { background: var(--steel-line); }
+.event-feed .card { margin-bottom: 0.5rem; }
+
 .login-box {
   max-width: 320px;
   margin: 4rem auto;

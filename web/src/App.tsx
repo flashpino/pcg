@@ -3,11 +3,13 @@ import { api } from './api.js';
 import { AlertsPage } from './pages/AlertsPage.js';
 import { ClientsPage } from './pages/ClientsPage.js';
 import { ContactsPage } from './pages/ContactsPage.js';
+import { DashboardPage } from './pages/DashboardPage.js';
 import { FirmwarePage } from './pages/FirmwarePage.js';
 import { LoginPage } from './pages/LoginPage.js';
 import { SensorsPage } from './pages/SensorsPage.js';
 
 const TABS = [
+  { id: 'dashboard', label: 'Dashboard', Page: DashboardPage },
   { id: 'clients', label: 'Clientes', Page: ClientsPage },
   { id: 'sensors', label: 'Sensores', Page: SensorsPage },
   { id: 'contacts', label: 'Contatos', Page: ContactsPage },
@@ -17,7 +19,7 @@ const TABS = [
 
 export function App() {
   const [email, setEmail] = useState<string | null | undefined>(undefined); // undefined = carregando
-  const [tab, setTab] = useState<(typeof TABS)[number]['id']>('clients');
+  const [tab, setTab] = useState<(typeof TABS)[number]['id']>('dashboard');
 
   function checkSession() {
     api

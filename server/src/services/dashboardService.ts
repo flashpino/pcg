@@ -1,0 +1,40 @@
+import type { Sensor } from '../db/queries.js';
+
+// Mesma condição usada em connectivitySweep.ts (fonte da verdade dos alertas de conectividade):
+// offline só quando a diferença é ESTRITAMENTE maior que o limite, senão o Dashboard mostraria
+// "offline" um tick antes de o alerta correspondente sequer existir.
+export function isSensorOnline(sensor: Pick<Sensor, 'last_seen_at' | 'offline_after_seconds'>, now: number): boolean {
+  if (!sensor.last_seen_at) return false;
+  return now - new Date(sensor.last_seen_at).getTime() <= sensor.offline_after_seconds * 1000;
+}
+
+export interface SensorStatusCount {
+  online: number;
+  offline: number;
+  activeClientIds: Set<number>;
+  onlineById: Map<number, boolean>;
+}
+
+// Espera receber só sensores já reivindicados (client_id não nulo) — quem chama já precisa
+// dessa lista filtrada pra outras coisas (sensorIds pro Influx), então filtra 1x só.
+// "Cliente ativo" = tem ao menos 1 sensor online agora.
+export function countSensorStatus(claimedSensors: Sensor[], now: number): SensorStatusCount {
+  const activeClientIds = new Set<number>();
+  const onlineById = new Map<number, boolean>();
+  let online = 0;
+  for (const sensor of claimedSensors) {
+    const sensorOnline = isSensorOnline(sensor, now);
+    onlineById.set(sensor.id, sensorOnline);
+    if (sensorOnline) {
+      online++;
+      activeClientIds.add(sensor.client_id!);
+    }
+  }
+  return { online, offline: claimedSensors.length - online, activeClientIds, onlineById };
+}
+
+// Aproximação de "online desde": último alerta de conectividade resolvido daquele sensor, ou
+// created_at se nunca houve um (assume online desde a criação). Ver Open Question do PRD.
+export function resolveOnlineSince(sensor: Pick<Sensor, 'created_at'>, lastResolvedAt: string | undefined): string {
+  return lastResolvedAt ?? sensor.created_at;
+}

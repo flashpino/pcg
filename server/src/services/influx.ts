@@ -59,3 +59,39 @@ export function queryReadings(sensorId: number, range: string): Promise<ReadingP
     };
   });
 }
+
+export interface LatestReading {
+  temperature: number | null;
+  humidity: number | null;
+  rssi: number | null;
+  time: string;
+}
+
+// group por sensor_id+_field antes do last() = 1 linha por (sensor, campo); pivot com rowKey
+// sensor_id (em vez de _time, que difere entre campos) junta os 3 campos numa linha por sensor.
+// sensorIds vem de listSensors() (nosso próprio banco), não de input do usuário — sem injection.
+export async function queryLatestReadings(sensorIds: number[]): Promise<Map<number, LatestReading>> {
+  const result = new Map<number, LatestReading>();
+  if (sensorIds.length === 0) return result;
+
+  const set = sensorIds.map((id) => `"${Number(id)}"`).join(', ');
+  const flux = `
+    from(bucket: "${process.env.INFLUX_BUCKET}")
+      |> range(start: -30d)
+      |> filter(fn: (r) => r._measurement == "readings" and contains(value: r.sensor_id, set: [${set}]))
+      |> group(columns: ["sensor_id", "_field"])
+      |> last()
+      |> pivot(rowKey: ["sensor_id"], columnKey: ["_field"], valueColumn: "_value")
+  `;
+  await queryApi.collectRows(flux, (values, tableMeta) => {
+    const row = tableMeta.toObject(values) as Record<string, unknown>;
+    result.set(Number(row.sensor_id), {
+      temperature: (row.temperature as number) ?? null,
+      humidity: (row.humidity as number) ?? null,
+      rssi: (row.rssi as number) ?? null,
+      time: row._time as string,
+    });
+    return null;
+  });
+  return result;
+}

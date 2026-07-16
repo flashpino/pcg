@@ -261,12 +261,31 @@ export interface AlertWithNotifications extends Alert {
   notifications: Notification[];
 }
 
+export const countAlertsSince = (hours: number) =>
+  pool
+    .query<{ count: string }>("SELECT COUNT(*) FROM alerts WHERE fired_at >= now() - ($1 || ' hours')::interval", [
+      hours,
+    ])
+    .then((r) => Number(r.rows[0].count));
+
+// Último alerta de conectividade resolvido por sensor — base pra aproximar "online desde" no dashboard.
+export const getLastConnectivityResolutions = (sensorIds: number[]) =>
+  pool
+    .query<{ sensor_id: number; resolved_at: string }>(
+      `SELECT DISTINCT ON (sensor_id) sensor_id, resolved_at FROM alerts
+       WHERE type = 'connectivity' AND state = 'resolved' AND sensor_id = ANY($1)
+       ORDER BY sensor_id, resolved_at DESC`,
+      [sensorIds],
+    )
+    .then((r) => new Map(r.rows.map((row) => [row.sensor_id, row.resolved_at])));
+
 // 2 queries (sem N+1): busca os alertas, depois todas as notifications deles de uma vez.
-export const listAlerts = async (state?: Alert['state']): Promise<AlertWithNotifications[]> => {
+export const listAlerts = async (state?: Alert['state'], limit?: number): Promise<AlertWithNotifications[]> => {
+  const limitClause = limit ? ` LIMIT ${Number(limit)}` : '';
   const alerts = await (
     state
-      ? pool.query<Alert>('SELECT * FROM alerts WHERE state = $1 ORDER BY fired_at DESC', [state])
-      : pool.query<Alert>('SELECT * FROM alerts ORDER BY fired_at DESC')
+      ? pool.query<Alert>(`SELECT * FROM alerts WHERE state = $1 ORDER BY fired_at DESC${limitClause}`, [state])
+      : pool.query<Alert>(`SELECT * FROM alerts ORDER BY fired_at DESC${limitClause}`)
   ).then((r) => r.rows);
   if (alerts.length === 0) return [];
 
