@@ -5,10 +5,12 @@ import {
   getFiringAlert,
   getLastNotification,
   getMessageTemplate,
+  listContactAlertPrefsByClient,
   listContacts,
   resolveAlert,
   type Alert,
   type Contact,
+  type ContactAlertPref,
   type Sensor,
 } from '../db/queries.js';
 import { renderTemplate } from './messageTemplates.js';
@@ -59,12 +61,6 @@ export function shouldRenotify(lastSentAt: Date | null, renotifyMinutes: number,
   return now.getTime() - lastSentAt.getTime() >= renotifyMinutes * 60_000;
 }
 
-// Schema só tem alert_temperature/alert_connectivity no contato — umidade é a mesma
-// leitura do sensor de clima (DHT22), então herda a preferência "temperature".
-function contactPrefOk(contact: Contact, type: AlertType): boolean {
-  return type === 'temperature' || type === 'humidity' ? contact.alert_temperature : contact.alert_connectivity;
-}
-
 async function clientNameOf(sensor: Pick<Sensor, 'client_id'>): Promise<string> {
   if (sensor.client_id === null) return '';
   const client = await getClient(sensor.client_id);
@@ -89,11 +85,13 @@ async function renderMessage(key: string, vars: Record<string, string | number |
 type Channel = 'whatsapp' | 'voice';
 type Kind = 'fire' | 'resolve' | 'renotify';
 
-// Ponto único de enfileiramento: aplica preferência de tipo + janela de horário (auditável via
-// notifications.status skipped_pref/skipped_window), e para renotify o cooldown por contato.
+// Ponto único de enfileiramento: aplica preferência do tipo + janela de horário (auditável via
+// notifications.status skipped_pref/skipped_window), cada uma vinda da pref específica do
+// (contato, tipo) — não mais de um campo único compartilhado entre os 3 tipos de alerta.
 async function notifyContacts(
   alert: Alert,
   contacts: Contact[],
+  prefs: ContactAlertPref[],
   type: AlertType,
   channels: Channel[],
   texts: RenderedTexts,
@@ -101,22 +99,25 @@ async function notifyContacts(
 ): Promise<void> {
   const now = new Date();
   for (const contact of contacts) {
-    const prefOk = contactPrefOk(contact, type);
+    if (!contact.active) continue; // contato desligado por completo — nem entra na auditoria
+
+    const pref = prefs.find((p) => p.contact_id === contact.id && p.alert_type === type);
     for (const channel of channels) {
       const channelEnabled = channel === 'whatsapp' ? contact.channel_whatsapp : contact.channel_voice;
       if (!channelEnabled) continue; // contato desligou o canal — nada a auditar
 
-      if (!prefOk) {
+      if (!pref?.enabled) {
         await createNotification(alert.id, contact.id, channel, 'skipped_pref');
         continue;
       }
-      if (!isWithinWindow(contact, now)) {
+      const windowLike = { days_of_week: pref.days_of_week, window_start: pref.window_start, window_end: pref.window_end, timezone: contact.timezone };
+      if (!isWithinWindow(windowLike, now)) {
         await createNotification(alert.id, contact.id, channel, 'skipped_window');
         continue;
       }
       if (kind === 'renotify') {
         const last = await getLastNotification(alert.id, contact.id, 'whatsapp');
-        if (!shouldRenotify(last ? new Date(last.created_at) : null, contact.renotify_minutes, now)) continue;
+        if (!shouldRenotify(last ? new Date(last.created_at) : null, pref.renotify_minutes, now)) continue;
       }
 
       // channels só inclui 'voice' quando texts.voice existe (ver chamadas em evaluateType).
@@ -129,7 +130,14 @@ async function notifyContacts(
   }
 }
 
-async function evaluateType(sensor: Sensor, contacts: Contact[], type: AlertType, value: number, bound: Bound): Promise<void> {
+async function evaluateType(
+  sensor: Sensor,
+  contacts: Contact[],
+  prefs: ContactAlertPref[],
+  type: AlertType,
+  value: number,
+  bound: Bound,
+): Promise<void> {
   const firing = await getFiringAlert(sensor.id, type);
   const transition = decideTransition(value, bound, Boolean(firing));
   if (transition === 'none') return;
@@ -151,7 +159,7 @@ async function evaluateType(sensor: Sensor, contacts: Contact[], type: AlertType
     // Ligação de voz é exclusiva de alerta de temperatura, e só no disparo inicial (nunca em
     // renotify/resolve) — garante "1 ligação por alerta". Sem texto de voz configurado = sem ligação.
     const channels: Channel[] = type === 'temperature' && texts.voice ? ['whatsapp', 'voice'] : ['whatsapp'];
-    if (alert) await notifyContacts(alert, contacts, type, channels, texts, 'fire');
+    if (alert) await notifyContacts(alert, contacts, prefs, type, channels, texts, 'fire');
     return;
   }
 
@@ -159,20 +167,21 @@ async function evaluateType(sensor: Sensor, contacts: Contact[], type: AlertType
   if (transition === 'resolve') {
     await resolveAlert(firing!.id);
     const texts = await renderMessage(`${type}_resolve`, vars);
-    await notifyContacts(firing!, contacts, type, ['whatsapp'], texts, 'resolve');
+    await notifyContacts(firing!, contacts, prefs, type, ['whatsapp'], texts, 'resolve');
     return;
   }
 
   const texts = await renderMessage(`${type}_fire`, vars);
-  await notifyContacts(firing!, contacts, type, ['whatsapp'], texts, 'renotify');
+  await notifyContacts(firing!, contacts, prefs, type, ['whatsapp'], texts, 'renotify');
 }
 
 // Sensor não reivindicado (client_id null) não tem contatos — ingest chama isso incondicionalmente.
 export async function evaluate(sensor: Sensor, reading: { temp: number; hum: number }): Promise<void> {
   if (sensor.client_id === null) return;
   const contacts = await listContacts(sensor.client_id);
-  await evaluateType(sensor, contacts, 'temperature', reading.temp, { min: sensor.temp_min, max: sensor.temp_max });
-  await evaluateType(sensor, contacts, 'humidity', reading.hum, { min: sensor.hum_min, max: sensor.hum_max });
+  const prefs = await listContactAlertPrefsByClient(sensor.client_id);
+  await evaluateType(sensor, contacts, prefs, 'temperature', reading.temp, { min: sensor.temp_min, max: sensor.temp_max });
+  await evaluateType(sensor, contacts, prefs, 'humidity', reading.hum, { min: sensor.hum_min, max: sensor.hum_max });
 }
 
 // Chamado pelo connectivitySweep (Task 9) a cada varredura — `offline` já vem calculado a partir
@@ -183,6 +192,7 @@ export async function evaluateConnectivity(sensor: Sensor, offline: boolean): Pr
   if (transition === 'none') return;
 
   const contacts = await listContacts(sensor.client_id!);
+  const prefs = await listContactAlertPrefsByClient(sensor.client_id!);
   const cliente = await clientNameOf(sensor);
   const vars = { sensor: sensor.name, cliente, local: sensor.local ?? '', segundos: sensor.offline_after_seconds };
 
@@ -190,17 +200,17 @@ export async function evaluateConnectivity(sensor: Sensor, offline: boolean): Pr
     const texts = await renderMessage('connectivity_fire', vars);
     const alert = await createAlert(sensor.id, 'connectivity', null, texts.whatsapp);
     // Sem ligação de voz aqui — voz é exclusiva de alerta de temperatura.
-    if (alert) await notifyContacts(alert, contacts, 'connectivity', ['whatsapp'], texts, 'fire');
+    if (alert) await notifyContacts(alert, contacts, prefs, 'connectivity', ['whatsapp'], texts, 'fire');
     return;
   }
 
   if (transition === 'resolve') {
     await resolveAlert(firing!.id);
     const texts = await renderMessage('connectivity_resolve', vars);
-    await notifyContacts(firing!, contacts, 'connectivity', ['whatsapp'], texts, 'resolve');
+    await notifyContacts(firing!, contacts, prefs, 'connectivity', ['whatsapp'], texts, 'resolve');
     return;
   }
 
   const texts = await renderMessage('connectivity_renotify', vars);
-  await notifyContacts(firing!, contacts, 'connectivity', ['whatsapp'], texts, 'renotify');
+  await notifyContacts(firing!, contacts, prefs, 'connectivity', ['whatsapp'], texts, 'renotify');
 }

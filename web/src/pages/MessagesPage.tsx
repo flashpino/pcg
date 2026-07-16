@@ -19,12 +19,12 @@ const LABELS: Record<string, string> = {
 
 const LEGEND: Record<string, string[]> = {
   temperature_fire: ['sensor', 'local', 'cliente', 'temperatura', 'min', 'max'],
-  temperature_resolve: ['sensor', 'local', 'cliente'],
+  temperature_resolve: ['sensor', 'local', 'cliente', 'temperatura', 'min', 'max'],
   humidity_fire: ['sensor', 'local', 'cliente', 'umidade', 'min', 'max'],
-  humidity_resolve: ['sensor', 'local', 'cliente'],
+  humidity_resolve: ['sensor', 'local', 'cliente', 'umidade', 'min', 'max'],
   connectivity_fire: ['sensor', 'local', 'cliente', 'segundos'],
-  connectivity_resolve: ['sensor', 'local', 'cliente'],
-  connectivity_renotify: ['sensor', 'local', 'cliente'],
+  connectivity_resolve: ['sensor', 'local', 'cliente', 'segundos'],
+  connectivity_renotify: ['sensor', 'local', 'cliente', 'segundos'],
 };
 
 function TemplateForm({ tpl, onSaved }: { tpl: Template; onSaved: () => void }) {

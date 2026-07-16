@@ -39,4 +39,14 @@ describe('isWithinWindow', () => {
     // 2026-01-09 é sexta-feira, 10:00 SP = 13:00 UTC
     expect(isWithinWindow(contact, new Date('2026-01-09T13:00:00Z'))).toBe(false);
   });
+
+  it('window_start/end null = sem restrição de horário (notifica a qualquer hora)', () => {
+    const pref = { ...base, window_start: null, window_end: null };
+    expect(isWithinWindow(pref, new Date('2026-01-05T03:00:00Z'))).toBe(true); // madrugada
+  });
+
+  it('window nula ainda respeita days_of_week', () => {
+    const pref = { ...base, window_start: null, window_end: null, days_of_week: [1, 2, 3, 4] };
+    expect(isWithinWindow(pref, new Date('2026-01-09T13:00:00Z'))).toBe(false); // sexta, sem sexta na lista
+  });
 });

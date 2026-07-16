@@ -149,15 +149,10 @@ export interface Contact {
   client_id: number;
   name: string;
   phone: string;
-  alert_temperature: boolean;
-  alert_connectivity: boolean;
   channel_voice: boolean;
   channel_whatsapp: boolean;
-  renotify_minutes: number;
-  days_of_week: number[];
-  window_start: string;
-  window_end: string;
   timezone: string;
+  active: boolean;
   created_at: string;
 }
 
@@ -165,16 +160,13 @@ export interface ContactInput {
   client_id: number;
   name: string;
   phone: string;
-  alert_temperature?: boolean;
-  alert_connectivity?: boolean;
   channel_voice?: boolean;
   channel_whatsapp?: boolean;
-  renotify_minutes?: number;
-  days_of_week?: number[];
-  window_start?: string;
-  window_end?: string;
   timezone?: string;
+  active?: boolean;
 }
+
+const ALERT_TYPES = ['temperature', 'humidity', 'connectivity'] as const;
 
 export const listContacts = (clientId?: number) =>
   clientId === undefined
@@ -186,32 +178,26 @@ export const listContacts = (clientId?: number) =>
 export const getContact = (id: number) =>
   pool.query<Contact>('SELECT * FROM contacts WHERE id = $1', [id]).then((r) => r.rows[0]);
 
-export const createContact = (input: ContactInput) =>
-  pool
+// Depois de criar o contato, semeia as 3 prefs (temperature/humidity/connectivity) com os
+// defaults da tabela — sem isso o contato não recebe nada até o admin configurar cada tipo.
+export const createContact = async (input: ContactInput): Promise<Contact> => {
+  const contact = await pool
     .query<Contact>(
-      `INSERT INTO contacts
-        (client_id, name, phone, alert_temperature, alert_connectivity, channel_voice, channel_whatsapp,
-         renotify_minutes, days_of_week, window_start, window_end, timezone)
-       VALUES ($1, $2, $3, COALESCE($4, true), COALESCE($5, true), COALESCE($6, true), COALESCE($7, true),
-               COALESCE($8, 60), COALESCE($9, '{1,2,3,4,5}'::integer[]), COALESCE($10, '07:00'::time), COALESCE($11, '18:00'::time),
-               COALESCE($12, 'America/Sao_Paulo'))
+      `INSERT INTO contacts (client_id, name, phone, channel_voice, channel_whatsapp, timezone, active)
+       VALUES ($1, $2, $3, COALESCE($4, true), COALESCE($5, true), COALESCE($6, 'America/Sao_Paulo'), COALESCE($7, true))
        RETURNING *`,
-      [
-        input.client_id,
-        input.name,
-        input.phone,
-        input.alert_temperature,
-        input.alert_connectivity,
-        input.channel_voice,
-        input.channel_whatsapp,
-        input.renotify_minutes,
-        input.days_of_week,
-        input.window_start,
-        input.window_end,
-        input.timezone,
-      ],
+      [input.client_id, input.name, input.phone, input.channel_voice, input.channel_whatsapp, input.timezone, input.active],
     )
     .then((r) => r.rows[0]);
+
+  for (const type of ALERT_TYPES) {
+    await pool.query('INSERT INTO contact_alert_prefs (contact_id, alert_type) VALUES ($1, $2) ON CONFLICT DO NOTHING', [
+      contact.id,
+      type,
+    ]);
+  }
+  return contact;
+};
 
 export const updateContact = (id: number, patch: Partial<ContactInput>) => {
   const cols = Object.keys(patch);
@@ -225,6 +211,47 @@ export const updateContact = (id: number, patch: Partial<ContactInput>) => {
 
 export const deleteContact = (id: number) =>
   pool.query('DELETE FROM contacts WHERE id = $1', [id]).then((r) => r.rowCount! > 0);
+
+export interface ContactAlertPref {
+  contact_id: number;
+  alert_type: 'temperature' | 'humidity' | 'connectivity';
+  enabled: boolean;
+  days_of_week: number[];
+  window_start: string | null;
+  window_end: string | null;
+  renotify_minutes: number;
+}
+
+export const listContactAlertPrefs = (contactId: number) =>
+  pool
+    .query<ContactAlertPref>('SELECT * FROM contact_alert_prefs WHERE contact_id = $1 ORDER BY alert_type', [contactId])
+    .then((r) => r.rows);
+
+// Todas as prefs de todos os contatos de um cliente numa query só (sem N+1 no alertService).
+export const listContactAlertPrefsByClient = (clientId: number) =>
+  pool
+    .query<ContactAlertPref>(
+      `SELECT p.* FROM contact_alert_prefs p JOIN contacts c ON c.id = p.contact_id WHERE c.client_id = $1`,
+      [clientId],
+    )
+    .then((r) => r.rows);
+
+// Replace completo (não patch parcial) — o form sempre manda os 5 campos de uma vez pro tipo.
+export const upsertContactAlertPref = (
+  contactId: number,
+  alertType: ContactAlertPref['alert_type'],
+  pref: Pick<ContactAlertPref, 'enabled' | 'days_of_week' | 'window_start' | 'window_end' | 'renotify_minutes'>,
+) =>
+  pool
+    .query<ContactAlertPref>(
+      `INSERT INTO contact_alert_prefs (contact_id, alert_type, enabled, days_of_week, window_start, window_end, renotify_minutes)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
+       ON CONFLICT (contact_id, alert_type) DO UPDATE SET
+         enabled = $3, days_of_week = $4, window_start = $5, window_end = $6, renotify_minutes = $7
+       RETURNING *`,
+      [contactId, alertType, pref.enabled, pref.days_of_week, pref.window_start, pref.window_end, pref.renotify_minutes],
+    )
+    .then((r) => r.rows[0]);
 
 export interface Alert {
   id: number;

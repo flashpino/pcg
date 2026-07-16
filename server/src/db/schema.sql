@@ -43,6 +43,35 @@ CREATE TABLE IF NOT EXISTS contacts (
   timezone TEXT NOT NULL DEFAULT 'America/Sao_Paulo',
   created_at TIMESTAMPTZ DEFAULT now()
 );
+-- Liga/desliga geral do contato (independente das prefs por tipo abaixo).
+ALTER TABLE contacts ADD COLUMN IF NOT EXISTS active BOOLEAN NOT NULL DEFAULT true;
+
+-- Config independente por tipo de alerta (dias/horário/re-alerta e liga/desliga próprios),
+-- substituindo os campos únicos e compartilhados de `contacts` (que ficam pra trás, sem uso
+-- no código novo, mas não removidos — sem ferramenta de migração pra isso com segurança).
+-- window_start/end NULL = sem restrição de horário (notifica a qualquer hora).
+CREATE TABLE IF NOT EXISTS contact_alert_prefs (
+  contact_id INT NOT NULL REFERENCES contacts(id) ON DELETE CASCADE,
+  alert_type TEXT NOT NULL CHECK (alert_type IN ('temperature', 'humidity', 'connectivity')),
+  enabled BOOLEAN NOT NULL DEFAULT true,
+  days_of_week INT[] NOT NULL DEFAULT '{0,1,2,3,4,5,6}',
+  window_start TIME,
+  window_end TIME,
+  renotify_minutes INT NOT NULL DEFAULT 60,
+  PRIMARY KEY (contact_id, alert_type)
+);
+
+-- Backfill idempotente: contato existente ganha as 3 prefs a partir da config antiga
+-- compartilhada, uma vez só (ON CONFLICT DO NOTHING não repete em boots seguintes).
+INSERT INTO contact_alert_prefs (contact_id, alert_type, enabled, days_of_week, window_start, window_end, renotify_minutes)
+  SELECT id, 'temperature', alert_temperature, days_of_week, window_start, window_end, renotify_minutes FROM contacts
+  ON CONFLICT (contact_id, alert_type) DO NOTHING;
+INSERT INTO contact_alert_prefs (contact_id, alert_type, enabled, days_of_week, window_start, window_end, renotify_minutes)
+  SELECT id, 'humidity', alert_temperature, days_of_week, window_start, window_end, renotify_minutes FROM contacts
+  ON CONFLICT (contact_id, alert_type) DO NOTHING;
+INSERT INTO contact_alert_prefs (contact_id, alert_type, enabled, days_of_week, window_start, window_end, renotify_minutes)
+  SELECT id, 'connectivity', alert_connectivity, days_of_week, window_start, window_end, renotify_minutes FROM contacts
+  ON CONFLICT (contact_id, alert_type) DO NOTHING;
 
 CREATE TABLE IF NOT EXISTS alerts (
   id SERIAL PRIMARY KEY,

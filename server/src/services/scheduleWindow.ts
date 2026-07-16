@@ -1,6 +1,9 @@
-import type { Contact } from '../db/queries.js';
-
-type WindowContact = Pick<Contact, 'days_of_week' | 'window_start' | 'window_end' | 'timezone'>;
+interface WindowLike {
+  days_of_week: number[];
+  window_start: string | null;
+  window_end: string | null;
+  timezone: string;
+}
 
 const WEEKDAY_INDEX: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
 
@@ -25,12 +28,15 @@ function toMinutes(hhmm: string): number {
 
 // Pura, zero dependências: usa Intl.DateTimeFormat para converter `now` (sempre UTC/servidor)
 // para o horário local do contato antes de comparar contra a janela.
-export function isWithinWindow(contact: WindowContact, now: Date): boolean {
-  const { day, minutes } = localParts(contact.timezone, now);
-  if (!contact.days_of_week.includes(day)) return false;
+export function isWithinWindow(pref: WindowLike, now: Date): boolean {
+  const { day, minutes } = localParts(pref.timezone, now);
+  if (!pref.days_of_week.includes(day)) return false;
 
-  const start = toMinutes(contact.window_start);
-  const end = toMinutes(contact.window_end);
+  // Sem horário configurado = sem restrição (notifica a qualquer hora do dia).
+  if (pref.window_start === null || pref.window_end === null) return true;
+
+  const start = toMinutes(pref.window_start);
+  const end = toMinutes(pref.window_end);
 
   // Janela cruzando meia-noite (ex. 22:00–06:00): start > end inverte a comparação.
   return start <= end ? minutes >= start && minutes < end : minutes >= start || minutes < end;

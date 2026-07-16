@@ -5,9 +5,12 @@ import {
   createResolvedAlert,
   deleteContact,
   getContact,
+  listContactAlertPrefs,
   listContacts,
   listSensors,
   updateContact,
+  upsertContactAlertPref,
+  type ContactAlertPref,
   type ContactInput,
 } from '../db/queries.js';
 import { enqueueVoice, enqueueWhatsapp } from '../services/notifier.js';
@@ -52,6 +55,30 @@ export async function contactsRoutes(app: FastifyInstance): Promise<void> {
     const ok = await deleteContact(Number(req.params.id));
     if (!ok) throw Object.assign(new Error('contato não encontrado'), { statusCode: 404 });
     reply.status(204);
+  });
+
+  // 3 prefs por contato (temperature/humidity/connectivity), semeadas por createContact.
+  app.get<{ Params: { id: string } }>('/api/contacts/:id/alert-prefs', async (req) =>
+    listContactAlertPrefs(Number(req.params.id)),
+  );
+
+  const ALERT_TYPES = ['temperature', 'humidity', 'connectivity'];
+  app.put<{
+    Params: { id: string; type: string };
+    Body: Omit<ContactAlertPref, 'contact_id' | 'alert_type'>;
+  }>('/api/contacts/:id/alert-prefs/:type', async (req) => {
+    const { type } = req.params;
+    if (!ALERT_TYPES.includes(type)) {
+      throw Object.assign(new Error("type deve ser 'temperature', 'humidity' ou 'connectivity'"), { statusCode: 400 });
+    }
+    const { enabled, days_of_week, window_start, window_end, renotify_minutes } = req.body ?? {};
+    return upsertContactAlertPref(Number(req.params.id), type as ContactAlertPref['alert_type'], {
+      enabled: enabled ?? true,
+      days_of_week: days_of_week ?? [0, 1, 2, 3, 4, 5, 6],
+      window_start: window_start ?? null,
+      window_end: window_end ?? null,
+      renotify_minutes: renotify_minutes ?? 60,
+    });
   });
 
   app.post<{ Params: { id: string } }>('/api/contacts/:id/welcome', async (req) => {

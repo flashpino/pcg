@@ -6,35 +6,95 @@ interface Contact {
   client_id: number;
   name: string;
   phone: string;
-  alert_temperature: boolean;
-  alert_connectivity: boolean;
   channel_voice: boolean;
   channel_whatsapp: boolean;
-  renotify_minutes: number;
-  days_of_week: number[];
-  window_start: string;
-  window_end: string;
   timezone: string;
+  active: boolean;
+}
+
+type AlertType = 'connectivity' | 'temperature' | 'humidity';
+
+interface AlertPref {
+  alert_type: AlertType;
+  enabled: boolean;
+  days_of_week: number[];
+  window_start: string | null;
+  window_end: string | null;
+  renotify_minutes: number;
 }
 
 const DIAS = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sab'];
+const TYPE_ORDER: AlertType[] = ['connectivity', 'temperature', 'humidity'];
+const TYPE_LABELS: Record<AlertType, string> = {
+  connectivity: 'Conectividade (Online/Offline)',
+  temperature: 'Temperatura',
+  humidity: 'Umidade',
+};
+
+function emptyPref(type: AlertType): AlertPref {
+  return { alert_type: type, enabled: type !== 'humidity', days_of_week: [0, 1, 2, 3, 4, 5, 6], window_start: null, window_end: null, renotify_minutes: 60 };
+}
+
+function emptyPrefs(): Record<AlertType, AlertPref> {
+  return { connectivity: emptyPref('connectivity'), temperature: emptyPref('temperature'), humidity: emptyPref('humidity') };
+}
 
 function emptyForm(clientId: number) {
-  return {
-    client_id: clientId,
-    name: '',
-    phone: '',
-    alert_temperature: true,
-    alert_connectivity: true,
-    channel_voice: true,
-    channel_whatsapp: true,
-    renotify_minutes: 60,
-    days_of_week: [1, 2, 3, 4, 5] as number[],
-    window_start: '07:00',
-    window_end: '18:00',
-    timezone: 'America/Sao_Paulo',
-    welcome: false,
-  };
+  return { client_id: clientId, name: '', phone: '', channel_voice: true, channel_whatsapp: true, timezone: 'America/Sao_Paulo', active: true, welcome: false };
+}
+
+function AlertPrefSection({ pref, onChange }: { pref: AlertPref; onChange: (pref: AlertPref) => void }) {
+  function toggleDay(day: number) {
+    onChange({
+      ...pref,
+      days_of_week: pref.days_of_week.includes(day) ? pref.days_of_week.filter((d) => d !== day) : [...pref.days_of_week, day].sort(),
+    });
+  }
+
+  return (
+    <div className="card" style={{ marginBottom: '0.75rem' }}>
+      <label>
+        <input type="checkbox" checked={pref.enabled} onChange={(e) => onChange({ ...pref, enabled: e.target.checked })} />{' '}
+        <strong>{TYPE_LABELS[pref.alert_type]}</strong>
+      </label>
+      {pref.enabled && (
+        <>
+          <div className="inline" style={{ marginTop: '0.5rem' }}>
+            {DIAS.map((label, i) => (
+              <label key={i}>
+                <input type="checkbox" checked={pref.days_of_week.includes(i)} onChange={() => toggleDay(i)} /> {label}
+              </label>
+            ))}
+          </div>
+          <div className="inline">
+            <label>
+              janela (vazio = sem restrição de horário){' '}
+              <input
+                type="time"
+                value={pref.window_start ?? ''}
+                onChange={(e) => onChange({ ...pref, window_start: e.target.value || null })}
+              />
+              {' – '}
+              <input
+                type="time"
+                value={pref.window_end ?? ''}
+                onChange={(e) => onChange({ ...pref, window_end: e.target.value || null })}
+              />
+            </label>
+            <label>
+              re-alerta (min){' '}
+              <input
+                type="number"
+                style={{ width: '4rem' }}
+                value={pref.renotify_minutes}
+                onChange={(e) => onChange({ ...pref, renotify_minutes: Number(e.target.value) })}
+              />
+            </label>
+          </div>
+        </>
+      )}
+    </div>
+  );
 }
 
 export function ClientContacts({ clientId }: { clientId: number }) {
@@ -42,6 +102,7 @@ export function ClientContacts({ clientId }: { clientId: number }) {
   const [error, setError] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [form, setForm] = useState(emptyForm(clientId));
+  const [prefs, setPrefs] = useState<Record<AlertType, AlertPref>>(emptyPrefs());
 
   function load() {
     api.get<Contact[]>(`/api/contacts?clientId=${clientId}`).then(setContacts).catch((err) => setError(err.message));
@@ -49,21 +110,19 @@ export function ClientContacts({ clientId }: { clientId: number }) {
 
   useEffect(load, [clientId]);
 
-  function toggleDay(day: number) {
-    setForm((f) => ({
-      ...f,
-      days_of_week: f.days_of_week.includes(day) ? f.days_of_week.filter((d) => d !== day) : [...f.days_of_week, day].sort(),
-    }));
-  }
-
-  function edit(c: Contact) {
+  async function edit(c: Contact) {
     setEditingId(c.id);
     setForm({ ...c, welcome: false });
+    const rows = await api.get<AlertPref[]>(`/api/contacts/${c.id}/alert-prefs`);
+    const byType = emptyPrefs();
+    for (const row of rows) byType[row.alert_type] = row;
+    setPrefs(byType);
   }
 
   function cancelEdit() {
     setEditingId(null);
     setForm(emptyForm(clientId));
+    setPrefs(emptyPrefs());
   }
 
   async function submit(e: React.FormEvent) {
@@ -71,12 +130,10 @@ export function ClientContacts({ clientId }: { clientId: number }) {
     setError(null);
     const { welcome, ...body } = form;
     try {
-      if (editingId) {
-        await api.patch(`/api/contacts/${editingId}`, body);
-      } else {
-        const created = await api.post<Contact>('/api/contacts', body);
-        if (welcome) await api.post(`/api/contacts/${created.id}/welcome`);
-      }
+      const contactId = editingId ?? (await api.post<Contact>('/api/contacts', body)).id;
+      if (editingId) await api.patch(`/api/contacts/${editingId}`, body);
+      await Promise.all(TYPE_ORDER.map((type) => api.put(`/api/contacts/${contactId}/alert-prefs/${type}`, prefs[type])));
+      if (!editingId && welcome) await api.post(`/api/contacts/${contactId}/welcome`);
       cancelEdit();
       load();
     } catch (err) {
@@ -116,27 +173,7 @@ export function ClientContacts({ clientId }: { clientId: number }) {
         </div>
         <div className="inline">
           <label>
-            <input
-              type="checkbox"
-              checked={form.alert_temperature}
-              onChange={(e) => setForm((f) => ({ ...f, alert_temperature: e.target.checked }))}
-            />{' '}
-            temperatura/umidade
-          </label>
-          <label>
-            <input
-              type="checkbox"
-              checked={form.alert_connectivity}
-              onChange={(e) => setForm((f) => ({ ...f, alert_connectivity: e.target.checked }))}
-            />{' '}
-            conectividade
-          </label>
-          <label>
-            <input
-              type="checkbox"
-              checked={form.channel_voice}
-              onChange={(e) => setForm((f) => ({ ...f, channel_voice: e.target.checked }))}
-            />{' '}
+            <input type="checkbox" checked={form.channel_voice} onChange={(e) => setForm((f) => ({ ...f, channel_voice: e.target.checked }))} />{' '}
             voz
           </label>
           <label>
@@ -147,36 +184,20 @@ export function ClientContacts({ clientId }: { clientId: number }) {
             />{' '}
             whatsapp
           </label>
-        </div>
-        <div className="inline">
-          {DIAS.map((label, i) => (
-            <label key={i}>
-              <input type="checkbox" checked={form.days_of_week.includes(i)} onChange={() => toggleDay(i)} /> {label}
-            </label>
-          ))}
-        </div>
-        <div className="inline">
           <label>
-            janela{' '}
-            <input type="time" value={form.window_start} onChange={(e) => setForm((f) => ({ ...f, window_start: e.target.value }))} />
-            {' – '}
-            <input type="time" value={form.window_end} onChange={(e) => setForm((f) => ({ ...f, window_end: e.target.value }))} />
-          </label>
-          <input
-            placeholder="timezone"
-            value={form.timezone}
-            onChange={(e) => setForm((f) => ({ ...f, timezone: e.target.value }))}
-          />
-          <label>
-            re-alerta (min){' '}
-            <input
-              type="number"
-              style={{ width: '4rem' }}
-              value={form.renotify_minutes}
-              onChange={(e) => setForm((f) => ({ ...f, renotify_minutes: Number(e.target.value) }))}
-            />
+            <input type="checkbox" checked={form.active} onChange={(e) => setForm((f) => ({ ...f, active: e.target.checked }))} />{' '}
+            <strong>Contato ativo</strong>
           </label>
         </div>
+
+        <h3>Preferências de alertas</h3>
+        <p>
+          <small>Cada tipo de alerta tem seu próprio liga/desliga, dias, horário e intervalo de re-alerta.</small>
+        </p>
+        {TYPE_ORDER.map((type) => (
+          <AlertPrefSection key={type} pref={prefs[type]} onChange={(p) => setPrefs((cur) => ({ ...cur, [type]: p }))} />
+        ))}
+
         {!editingId && (
           <div className="inline">
             <label>
@@ -204,7 +225,7 @@ export function ClientContacts({ clientId }: { clientId: number }) {
           <tr>
             <th>Nome</th>
             <th>Telefone</th>
-            <th>Janela</th>
+            <th>Status</th>
             <th />
           </tr>
         </thead>
@@ -213,9 +234,7 @@ export function ClientContacts({ clientId }: { clientId: number }) {
             <tr key={c.id}>
               <td>{c.name}</td>
               <td>{c.phone}</td>
-              <td>
-                {c.days_of_week.map((d) => DIAS[d]).join('/')} {c.window_start}-{c.window_end}
-              </td>
+              <td className={c.active ? 'status-online' : 'status-offline'}>{c.active ? 'ativo' : 'inativo'}</td>
               <td>
                 <button className="secondary" onClick={() => edit(c)}>
                   Editar
