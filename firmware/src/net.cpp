@@ -220,6 +220,10 @@ static void task(void* pvParameters) {
 
     if (!ensureConnected()) {
       publish(uiQueue, Status::OFFLINE, false, 0, 0, 0);
+      // Sem isso, "sem credencial WiFi" vira busy-loop lendo o NVS sem parar
+      // (ensureConnected retorna na hora, sem esperar nada, enquanto o usuário
+      // configura a rede pela tela — visto martelando o NVS a ~8ms/iteração em bancada).
+      vTaskDelay(pdMS_TO_TICKS(500));
       continue;
     }
 
