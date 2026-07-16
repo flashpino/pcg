@@ -178,6 +178,10 @@ static void buildDashboard() {
   lv_chart_set_type(tempChart, LV_CHART_TYPE_LINE);
   lv_chart_set_point_count(tempChart, 50);
   lv_obj_set_style_size(tempChart, 0, LV_PART_INDICATOR);  // sparkline: sem "bolinhas"
+  lv_chart_set_div_line_count(tempChart, 0, 0);            // sem grade — sparkline limpa (referência)
+  lv_obj_set_style_border_width(tempChart, 0, 0);
+  lv_obj_set_style_bg_opa(tempChart, LV_OPA_TRANSP, 0);
+  lv_obj_set_style_pad_all(tempChart, 0, 0);
   tempSeries = lv_chart_add_series(tempChart, lv_color_hex(0xFB8C00), LV_CHART_AXIS_PRIMARY_Y);
 
   tempMinMaxLabel = lv_label_create(tempPanel);
@@ -205,6 +209,10 @@ static void buildDashboard() {
   lv_chart_set_type(humChart, LV_CHART_TYPE_LINE);
   lv_chart_set_point_count(humChart, 50);
   lv_obj_set_style_size(humChart, 0, LV_PART_INDICATOR);
+  lv_chart_set_div_line_count(humChart, 0, 0);
+  lv_obj_set_style_border_width(humChart, 0, 0);
+  lv_obj_set_style_bg_opa(humChart, LV_OPA_TRANSP, 0);
+  lv_obj_set_style_pad_all(humChart, 0, 0);
   humSeries = lv_chart_add_series(humChart, lv_color_hex(0x1E88E5), LV_CHART_AXIS_PRIMARY_Y);
 
   humMinMaxLabel = lv_label_create(humPanel);
@@ -219,9 +227,9 @@ static void showDashboard() {
 // Chamado a cada net::Event ONLINE com leitura nova — atualiza valores, sparkline e max/min do dia.
 static void updateDashboardReading(float temp, float hum) {
   char buf[16];
-  snprintf(buf, sizeof(buf), "%.1f", temp);
+  snprintf(buf, sizeof(buf), "%.1f°C", temp);
   lv_label_set_text(tempValueLabel, buf);
-  snprintf(buf, sizeof(buf), "%.1f", hum);
+  snprintf(buf, sizeof(buf), "%.0f%%", hum);
   lv_label_set_text(humValueLabel, buf);
 
   lv_chart_set_next_value(tempChart, tempSeries, (lv_coord_t)(temp * 10));
@@ -268,6 +276,11 @@ static void updateHeader() {
 
   bool online = lastNetEvent.status == net::Status::ONLINE;
   lv_obj_set_style_bg_color(statusDot, online ? lv_palette_main(LV_PALETTE_GREEN) : lv_palette_main(LV_PALETTE_GREY), 0);
+
+  // Referência mostra o SSID conectado, não o nome do device — cai pro nome do device
+  // (configurável no menu) enquanto não há WiFi, pra não ficar em branco.
+  lv_label_set_text(deviceNameLabel,
+                     WiFi.status() == WL_CONNECTED ? WiFi.SSID().c_str() : storage::loadDeviceName().c_str());
 
   // ASCII puro — os caracteres de bloco Unicode (▂▄▆█) não existem no subset de fonte
   // compilado (lv_conf.h só habilita LV_FONT_MONTSERRAT_*, sem esse range), e viravam
