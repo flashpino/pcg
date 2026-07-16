@@ -9,26 +9,69 @@ export interface User {
 export const getUserByEmail = (email: string) =>
   pool.query<User>('SELECT * FROM users WHERE email = $1', [email]).then((r) => r.rows[0]);
 
+export interface AdminSummary {
+  id: number;
+  email: string;
+}
+
+// Nunca seleciona password_hash de volta pro painel.
+export const listUsers = () =>
+  pool.query<AdminSummary>('SELECT id, email FROM users ORDER BY email').then((r) => r.rows);
+
+export const countUsers = () => pool.query('SELECT COUNT(*) FROM users').then((r) => Number(r.rows[0].count));
+
+export const createUserRecord = (email: string, passwordHash: string) =>
+  pool
+    .query<AdminSummary>('INSERT INTO users (email, password_hash) VALUES ($1, $2) RETURNING id, email', [
+      email,
+      passwordHash,
+    ])
+    .then((r) => r.rows[0]);
+
+export const deleteUser = (id: number) =>
+  pool.query('DELETE FROM users WHERE id = $1', [id]).then((r) => r.rowCount! > 0);
+
 export interface Client {
   id: number;
   name: string;
+  email: string | null;
   created_at: string;
 }
 
+// Nunca inclui password_hash — essas 4 são as que o painel admin usa pra listar/editar clientes.
+const CLIENT_COLS = 'id, name, email, created_at';
+
 export const listClients = () =>
-  pool.query<Client>('SELECT * FROM clients ORDER BY name').then((r) => r.rows);
+  pool.query<Client>(`SELECT ${CLIENT_COLS} FROM clients ORDER BY name`).then((r) => r.rows);
 
 export const getClient = (id: number) =>
-  pool.query<Client>('SELECT * FROM clients WHERE id = $1', [id]).then((r) => r.rows[0]);
+  pool.query<Client>(`SELECT ${CLIENT_COLS} FROM clients WHERE id = $1`, [id]).then((r) => r.rows[0]);
 
 export const createClient = (name: string) =>
-  pool.query<Client>('INSERT INTO clients (name) VALUES ($1) RETURNING *', [name]).then((r) => r.rows[0]);
+  pool.query<Client>(`INSERT INTO clients (name) VALUES ($1) RETURNING ${CLIENT_COLS}`, [name]).then((r) => r.rows[0]);
 
 export const updateClient = (id: number, name: string) =>
-  pool.query<Client>('UPDATE clients SET name = $2 WHERE id = $1 RETURNING *', [id, name]).then((r) => r.rows[0]);
+  pool
+    .query<Client>(`UPDATE clients SET name = $2 WHERE id = $1 RETURNING ${CLIENT_COLS}`, [id, name])
+    .then((r) => r.rows[0]);
 
 export const deleteClient = (id: number) =>
   pool.query('DELETE FROM clients WHERE id = $1', [id]).then((r) => r.rowCount! > 0);
+
+// Uso exclusivo do login do portal (server-side) — só aqui o password_hash sai do banco.
+export const getClientByEmail = (email: string) =>
+  pool
+    .query<Client & { password_hash: string | null }>('SELECT * FROM clients WHERE email = $1', [email])
+    .then((r) => r.rows[0]);
+
+export const setClientCredentials = (id: number, email: string, passwordHash: string) =>
+  pool
+    .query<Client>(`UPDATE clients SET email = $2, password_hash = $3 WHERE id = $1 RETURNING ${CLIENT_COLS}`, [
+      id,
+      email,
+      passwordHash,
+    ])
+    .then((r) => r.rows[0]);
 
 export interface Sensor {
   id: number;
@@ -260,6 +303,17 @@ export const getLastNotification = (alertId: number, contactId: number, channel:
 export interface AlertWithNotifications extends Alert {
   notifications: Notification[];
 }
+
+// Alertas de todos os sensores de um cliente — usado pelo portal do cliente final, escopado
+// por client_id via join (nunca aceita um sensor_id direto de fora).
+export const listAlertsByClient = (clientId: number, limit = 50) =>
+  pool
+    .query<Alert>(
+      `SELECT a.* FROM alerts a JOIN sensors s ON s.id = a.sensor_id
+       WHERE s.client_id = $1 ORDER BY a.fired_at DESC LIMIT $2`,
+      [clientId, limit],
+    )
+    .then((r) => r.rows);
 
 export const countAlertsSince = (hours: number) =>
   pool

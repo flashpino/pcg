@@ -9,7 +9,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
     if (!user || !(await bcrypt.compare(password ?? '', user.password_hash))) {
       throw Object.assign(new Error('credenciais inválidas'), { statusCode: 401 });
     }
-    const token = app.jwt.sign({ sub: user.id, email: user.email });
+    const token = app.jwt.sign({ sub: user.id, email: user.email, role: 'admin' });
     reply.setCookie('token', token, { httpOnly: true, path: '/', sameSite: 'lax' });
     return { ok: true };
   });

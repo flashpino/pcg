@@ -5,6 +5,41 @@ import { ClientContacts } from './ClientContacts.js';
 interface Client {
   id: number;
   name: string;
+  email: string | null;
+}
+
+function CredentialsForm({ client }: { client: Client }) {
+  const [email, setEmail] = useState(client.email ?? '');
+  const [password, setPassword] = useState('');
+  const [status, setStatus] = useState<string | null>(null);
+
+  async function save(e: React.FormEvent) {
+    e.preventDefault();
+    setStatus(null);
+    try {
+      await api.put(`/api/clients/${client.id}/credentials`, { email, password });
+      setPassword('');
+      setStatus('Credenciais salvas.');
+    } catch (err) {
+      setStatus(err instanceof Error ? err.message : 'falha ao salvar');
+    }
+  }
+
+  return (
+    <form className="inline" onSubmit={save} style={{ marginBottom: '1rem' }}>
+      <input type="email" placeholder="email do portal" value={email} onChange={(e) => setEmail(e.target.value)} required />
+      <input
+        type="password"
+        placeholder="nova senha (mín. 8 caracteres)"
+        minLength={8}
+        value={password}
+        onChange={(e) => setPassword(e.target.value)}
+        required
+      />
+      <button type="submit">Salvar credenciais do portal</button>
+      {status && <small>{status}</small>}
+    </form>
+  );
 }
 
 export function ClientsPage() {
@@ -44,6 +79,8 @@ export function ClientsPage() {
     load();
   }
 
+  const expandedClient = clients.find((c) => c.id === expandedClientId) ?? null;
+
   return (
     <main>
       <h2>Clientes</h2>
@@ -79,10 +116,11 @@ export function ClientsPage() {
         </tbody>
       </table>
 
-      {expandedClientId !== null && (
+      {expandedClient && (
         <div style={{ marginTop: '1rem' }}>
-          <h2>Contatos — {clients.find((c) => c.id === expandedClientId)?.name}</h2>
-          <ClientContacts clientId={expandedClientId} />
+          <h2>Contatos — {expandedClient.name}</h2>
+          <CredentialsForm client={expandedClient} />
+          <ClientContacts clientId={expandedClient.id} />
         </div>
       )}
     </main>

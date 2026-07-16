@@ -41,8 +41,8 @@ Saberemos que acertamos quando um admin conseguir identificar se qualquer sensor
 |---|---|---|---|---|
 | 1 | Dashboard consolidado | Admin abre o painel e já vê KPIs + status de todo sensor + eventos recentes, sem navegar | in-progress | `.claude/plans/painel-dashboard-redesign.plan.md` |
 | 2 | Contatos como sub-seção de Clientes | Contato só é criado/editado a partir da tela do cliente ao qual pertence | in-progress | `.claude/plans/painel-dashboard-redesign-contatos-em-clientes.plan.md` |
-| 3 | Aba Admins | Admin com acesso consegue criar/remover outros usuários admin pelo painel | pending | — |
-| 4 | Portal do cliente final | Cliente faz login e vê só os próprios sensores, leituras e alertas | pending | — |
+| 3 | Aba Admins | Admin com acesso consegue criar/remover outros usuários admin pelo painel | in-progress | `.claude/plans/painel-dashboard-redesign-aba-admins.plan.md` |
+| 4 | Portal do cliente final | Cliente faz login e vê só os próprios sensores, leituras e alertas | in-progress | `.claude/plans/painel-dashboard-redesign-portal-cliente.plan.md` |
 
 ## Open Questions
 - [ ] O "Uptime" do card de device é o uptime real do firmware (exige novo campo no `POST /api/ingest`, que hoje não manda isso) ou uma aproximação calculada no servidor a partir de `last_seen_at`/histórico de conectividade?

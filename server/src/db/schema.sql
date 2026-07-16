@@ -5,6 +5,9 @@ CREATE TABLE IF NOT EXISTS clients (
   id SERIAL PRIMARY KEY, name TEXT NOT NULL,
   created_at TIMESTAMPTZ DEFAULT now()
 );
+-- Login do portal do cliente final (Milestone 4) — opcional; NULL até o admin setar credenciais.
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS email TEXT UNIQUE;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS password_hash TEXT;
 
 CREATE TABLE IF NOT EXISTS sensors (
   id SERIAL PRIMARY KEY,

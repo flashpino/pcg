@@ -1,5 +1,6 @@
+import bcrypt from 'bcryptjs';
 import type { FastifyInstance } from 'fastify';
-import { createClient, deleteClient, getClient, listClients, updateClient } from '../db/queries.js';
+import { createClient, deleteClient, getClient, listClients, setClientCredentials, updateClient } from '../db/queries.js';
 
 export async function clientsRoutes(app: FastifyInstance): Promise<void> {
   app.get('/api/clients', async () => listClients());
@@ -30,4 +31,19 @@ export async function clientsRoutes(app: FastifyInstance): Promise<void> {
     if (!ok) throw Object.assign(new Error('cliente não encontrado'), { statusCode: 404 });
     reply.status(204);
   });
+
+  // Credenciais do portal do cliente final (Milestone 4) — admin define email/senha de login.
+  app.put<{ Params: { id: string }; Body: { email: string; password: string } }>(
+    '/api/clients/:id/credentials',
+    async (req) => {
+      const { email, password } = req.body ?? {};
+      if (!email || !password || password.length < 8) {
+        throw Object.assign(new Error('email e senha (mín. 8 caracteres) obrigatórios'), { statusCode: 400 });
+      }
+      const hash = await bcrypt.hash(password, 10);
+      const client = await setClientCredentials(Number(req.params.id), email, hash);
+      if (!client) throw Object.assign(new Error('cliente não encontrado'), { statusCode: 404 });
+      return client;
+    },
+  );
 }

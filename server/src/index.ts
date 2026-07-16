@@ -6,8 +6,10 @@ import Fastify from 'fastify';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { migrate, pool, seedAdmin } from './db/index.js';
+import { adminsRoutes } from './routes/admins.js';
 import { alertsRoutes } from './routes/alerts.js';
 import { authRoutes } from './routes/auth.js';
+import { clientPortalRoutes } from './routes/clientPortal.js';
 import { clientsRoutes } from './routes/clients.js';
 import { contactsRoutes } from './routes/contacts.js';
 import { dashboardRoutes } from './routes/dashboard.js';
@@ -34,12 +36,21 @@ if (missing.length > 0) {
 
 // Rotas /api/* públicas: sem cookie/JWT exigido. Tudo fora de /api (shell do painel,
 // assets estáticos) é público por padrão — a SPA decide mostrar login via /api/auth/me.
-const PUBLIC_API_ROUTES = ['/api/auth/login', '/api/ingest', '/api/provision'];
+const PUBLIC_API_ROUTES = ['/api/auth/login', '/api/client/login', '/api/ingest', '/api/provision'];
 const isPublic = (url: string) => {
   const path = url.split('?')[0];
   if (!path.startsWith('/api/')) return true;
   return PUBLIC_API_ROUTES.includes(path) || path.startsWith('/api/ota/');
 };
+
+// Autorização por role, além da autenticação (jwtVerify): token de cliente só abre rotas
+// /api/client/*, token de admin abre todo o resto. Token sem `role` (sessões de admin já
+// abertas antes deste milestone) é tratado como admin — retrocompatível, sem forçar logout.
+function isAuthorized(path: string, role: string | undefined): boolean {
+  const isClientRoute = path.startsWith('/api/client/');
+  if (isClientRoute) return role === 'client';
+  return role === undefined || role === 'admin';
+}
 
 const app = Fastify({ logger: true });
 
@@ -54,11 +65,17 @@ app.setErrorHandler((err: Error & { statusCode?: number }, req, reply) => {
 });
 
 app.addHook('onRequest', async (req, reply) => {
-  if (isPublic(req.raw.url ?? '')) return;
+  const url = req.raw.url ?? '';
+  if (isPublic(url)) return;
   try {
     await req.jwtVerify();
   } catch {
     reply.status(401).send({ error: 'não autenticado' });
+    return;
+  }
+  const { role } = req.user as { role?: string };
+  if (!isAuthorized(url.split('?')[0], role)) {
+    reply.status(403).send({ error: 'sem permissão' });
   }
 });
 
@@ -77,6 +94,8 @@ await app.register(clientsRoutes);
 await app.register(sensorsRoutes);
 await app.register(contactsRoutes);
 await app.register(dashboardRoutes);
+await app.register(adminsRoutes);
+await app.register(clientPortalRoutes);
 await app.register(provisionRoutes);
 await app.register(ingestRoutes);
 await app.register(firmwareRoutes);

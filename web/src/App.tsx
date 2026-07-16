@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api } from './api.js';
+import { AdminsPage } from './pages/AdminsPage.js';
 import { AlertsPage } from './pages/AlertsPage.js';
 import { ClientsPage } from './pages/ClientsPage.js';
 import { DashboardPage } from './pages/DashboardPage.js';
@@ -13,6 +14,7 @@ const TABS = [
   { id: 'sensors', label: 'Sensores', Page: SensorsPage },
   { id: 'alerts', label: 'Alertas', Page: AlertsPage },
   { id: 'firmware', label: 'Firmware', Page: FirmwarePage },
+  { id: 'admins', label: 'Admins', Page: AdminsPage },
 ] as const;
 
 export function App() {
