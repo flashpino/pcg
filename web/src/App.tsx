@@ -6,6 +6,7 @@ import { ClientsPage } from './pages/ClientsPage.js';
 import { DashboardPage } from './pages/DashboardPage.js';
 import { FirmwarePage } from './pages/FirmwarePage.js';
 import { LoginPage } from './pages/LoginPage.js';
+import { MessagesPage } from './pages/MessagesPage.js';
 import { SensorsPage } from './pages/SensorsPage.js';
 
 const TABS = [
@@ -14,6 +15,7 @@ const TABS = [
   { id: 'sensors', label: 'Sensores', Page: SensorsPage },
   { id: 'alerts', label: 'Alertas', Page: AlertsPage },
   { id: 'firmware', label: 'Firmware', Page: FirmwarePage },
+  { id: 'messages', label: 'Mensagens', Page: MessagesPage },
   { id: 'admins', label: 'Admins', Page: AdminsPage },
 ] as const;
 

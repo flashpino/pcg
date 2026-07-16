@@ -97,7 +97,7 @@ form.inline {
   margin-bottom: 1rem;
   align-items: center;
 }
-input, select, button {
+input, select, button, textarea {
   font-size: 0.85rem;
   padding: 0.4rem 0.6rem;
   border: 1px solid var(--steel-line);
@@ -106,7 +106,7 @@ input, select, button {
   color: var(--ink);
   font-family: "Consolas", "Courier New", monospace;
 }
-input:focus, select:focus { outline: 1px solid var(--amber); border-color: var(--amber); }
+input:focus, select:focus, textarea:focus { outline: 1px solid var(--amber); border-color: var(--amber); }
 button {
   cursor: pointer;
   background: var(--amber);

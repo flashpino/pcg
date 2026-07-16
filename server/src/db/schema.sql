@@ -76,3 +76,11 @@ CREATE TABLE IF NOT EXISTS users (
   id SERIAL PRIMARY KEY, email TEXT UNIQUE NOT NULL,
   password_hash TEXT NOT NULL              -- bcrypt; admin only no MVP
 );
+
+-- Textos de alerta configuráveis pelo painel (Mensagens) — {{$var}} substituído em runtime.
+-- voice só é usado em temperature_fire (ligação é exclusiva de alerta de temperatura).
+CREATE TABLE IF NOT EXISTS message_templates (
+  key TEXT PRIMARY KEY,
+  whatsapp TEXT NOT NULL,
+  voice TEXT
+);

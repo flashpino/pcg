@@ -384,3 +384,24 @@ export const createFirmware = (version: string, filename: string, sha256: string
       [version, filename, sha256],
     )
     .then((r) => r.rows[0]);
+
+export interface MessageTemplate {
+  key: string;
+  whatsapp: string;
+  voice: string | null;
+}
+
+export const listMessageTemplates = () =>
+  pool.query<MessageTemplate>('SELECT * FROM message_templates ORDER BY key').then((r) => r.rows);
+
+export const getMessageTemplate = (key: string) =>
+  pool.query<MessageTemplate>('SELECT * FROM message_templates WHERE key = $1', [key]).then((r) => r.rows[0]);
+
+export const updateMessageTemplate = (key: string, whatsapp: string, voice: string | null) =>
+  pool
+    .query<MessageTemplate>('UPDATE message_templates SET whatsapp = $2, voice = $3 WHERE key = $1 RETURNING *', [
+      key,
+      whatsapp,
+      voice,
+    ])
+    .then((r) => r.rows[0]);

@@ -1,14 +1,17 @@
 import {
   createAlert,
   createNotification,
+  getClient,
   getFiringAlert,
   getLastNotification,
+  getMessageTemplate,
   listContacts,
   resolveAlert,
   type Alert,
   type Contact,
   type Sensor,
 } from '../db/queries.js';
+import { renderTemplate } from './messageTemplates.js';
 import { enqueueVoice, enqueueWhatsapp } from './notifier.js';
 import { isWithinWindow } from './scheduleWindow.js';
 
@@ -62,15 +65,25 @@ function contactPrefOk(contact: Contact, type: AlertType): boolean {
   return type === 'temperature' || type === 'humidity' ? contact.alert_temperature : contact.alert_connectivity;
 }
 
-function buildMessage(sensor: Sensor, type: AlertType, value: number, bound: Bound): string {
-  const unit = type === 'temperature' ? '°C' : '%';
-  const label = type === 'temperature' ? 'Temperatura' : 'Umidade';
-  return `${label} de ${sensor.name} fora do limite: ${value}${unit} (min ${bound.min ?? '-'} / max ${bound.max ?? '-'})`;
+async function clientNameOf(sensor: Pick<Sensor, 'client_id'>): Promise<string> {
+  if (sensor.client_id === null) return '';
+  const client = await getClient(sensor.client_id);
+  return client?.name ?? '';
 }
 
-function buildResolveMessage(sensor: Sensor, type: AlertType): string {
-  const label = type === 'temperature' ? 'Temperatura' : 'Umidade';
-  return `${label} de ${sensor.name} voltou ao normal.`;
+interface RenderedTexts {
+  whatsapp: string;
+  voice?: string;
+}
+
+// Textos vêm de message_templates (painel > Mensagens), não mais hardcoded — {{$var}} são as
+// variáveis documentadas na legenda da UI. `voice` só existe de fato no template temperature_fire.
+async function renderMessage(key: string, vars: Record<string, string | number | undefined>): Promise<RenderedTexts> {
+  const tpl = await getMessageTemplate(key);
+  return {
+    whatsapp: renderTemplate(tpl.whatsapp, vars),
+    voice: tpl.voice ? renderTemplate(tpl.voice, vars) : undefined,
+  };
 }
 
 type Channel = 'whatsapp' | 'voice';
@@ -83,7 +96,7 @@ async function notifyContacts(
   contacts: Contact[],
   type: AlertType,
   channels: Channel[],
-  text: string,
+  texts: RenderedTexts,
   kind: Kind,
 ): Promise<void> {
   const now = new Date();
@@ -106,6 +119,8 @@ async function notifyContacts(
         if (!shouldRenotify(last ? new Date(last.created_at) : null, contact.renotify_minutes, now)) continue;
       }
 
+      // channels só inclui 'voice' quando texts.voice existe (ver chamadas em evaluateType).
+      const text = channel === 'voice' ? texts.voice! : texts.whatsapp;
       const notification = await createNotification(alert.id, contact.id, channel, 'queued');
       const job = { notificationId: notification.id, phone: contact.phone, text };
       if (channel === 'whatsapp') await enqueueWhatsapp(job);
@@ -119,22 +134,30 @@ async function evaluateType(sensor: Sensor, contacts: Contact[], type: AlertType
   const transition = decideTransition(value, bound, Boolean(firing));
   if (transition === 'none') return;
 
+  const cliente = await clientNameOf(sensor);
+  const valueVar = type === 'temperature' ? 'temperatura' : 'umidade';
+  const vars = { sensor: sensor.name, cliente, [valueVar]: value, min: bound.min ?? '-', max: bound.max ?? '-' };
+
   if (transition === 'fire') {
-    const message = buildMessage(sensor, type, value, bound);
-    const alert = await createAlert(sensor.id, type, value, message);
-    // Voz só entra no disparo inicial — nunca em renotify/resolve — garante "1 ligação por alerta".
-    if (alert) await notifyContacts(alert, contacts, type, ['whatsapp', 'voice'], message, 'fire');
+    const texts = await renderMessage(`${type}_fire`, vars);
+    const alert = await createAlert(sensor.id, type, value, texts.whatsapp);
+    // Ligação de voz é exclusiva de alerta de temperatura, e só no disparo inicial (nunca em
+    // renotify/resolve) — garante "1 ligação por alerta". Sem texto de voz configurado = sem ligação.
+    const channels: Channel[] = type === 'temperature' && texts.voice ? ['whatsapp', 'voice'] : ['whatsapp'];
+    if (alert) await notifyContacts(alert, contacts, type, channels, texts, 'fire');
     return;
   }
 
   // firing sempre existe aqui — decideTransition só devolve resolve/renotify quando firing é true.
   if (transition === 'resolve') {
     await resolveAlert(firing!.id);
-    await notifyContacts(firing!, contacts, type, ['whatsapp'], buildResolveMessage(sensor, type), 'resolve');
+    const texts = await renderMessage(`${type}_resolve`, vars);
+    await notifyContacts(firing!, contacts, type, ['whatsapp'], texts, 'resolve');
     return;
   }
 
-  await notifyContacts(firing!, contacts, type, ['whatsapp'], buildMessage(sensor, type, value, bound), 'renotify');
+  const texts = await renderMessage(`${type}_fire`, vars);
+  await notifyContacts(firing!, contacts, type, ['whatsapp'], texts, 'renotify');
 }
 
 // Sensor não reivindicado (client_id null) não tem contatos — ingest chama isso incondicionalmente.
@@ -153,19 +176,24 @@ export async function evaluateConnectivity(sensor: Sensor, offline: boolean): Pr
   if (transition === 'none') return;
 
   const contacts = await listContacts(sensor.client_id!);
+  const cliente = await clientNameOf(sensor);
+  const vars = { sensor: sensor.name, cliente, segundos: sensor.offline_after_seconds };
 
   if (transition === 'fire') {
-    const message = `Sensor ${sensor.name} sem comunicação há mais de ${sensor.offline_after_seconds}s.`;
-    const alert = await createAlert(sensor.id, 'connectivity', null, message);
-    if (alert) await notifyContacts(alert, contacts, 'connectivity', ['whatsapp', 'voice'], message, 'fire');
+    const texts = await renderMessage('connectivity_fire', vars);
+    const alert = await createAlert(sensor.id, 'connectivity', null, texts.whatsapp);
+    // Sem ligação de voz aqui — voz é exclusiva de alerta de temperatura.
+    if (alert) await notifyContacts(alert, contacts, 'connectivity', ['whatsapp'], texts, 'fire');
     return;
   }
 
   if (transition === 'resolve') {
     await resolveAlert(firing!.id);
-    await notifyContacts(firing!, contacts, 'connectivity', ['whatsapp'], `Sensor ${sensor.name} voltou a reportar.`, 'resolve');
+    const texts = await renderMessage('connectivity_resolve', vars);
+    await notifyContacts(firing!, contacts, 'connectivity', ['whatsapp'], texts, 'resolve');
     return;
   }
 
-  await notifyContacts(firing!, contacts, 'connectivity', ['whatsapp'], `Sensor ${sensor.name} continua sem comunicação.`, 'renotify');
+  const texts = await renderMessage('connectivity_renotify', vars);
+  await notifyContacts(firing!, contacts, 'connectivity', ['whatsapp'], texts, 'renotify');
 }
