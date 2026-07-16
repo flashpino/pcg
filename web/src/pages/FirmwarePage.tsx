@@ -23,6 +23,17 @@ export function FirmwarePage() {
 
   useEffect(load, []);
 
+  async function remove(f: Firmware) {
+    if (!window.confirm(`Remover firmware "${f.version}"?`)) return;
+    try {
+      const res = await fetch(`/api/firmware/${f.version}`, { method: 'DELETE', credentials: 'include' });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      load();
+    } catch (err) {
+      setMessage(err instanceof Error ? `Falha ao remover: ${err.message}` : 'falha ao remover');
+    }
+  }
+
   async function upload(e: React.FormEvent) {
     e.preventDefault();
     setMessage(null);
@@ -58,6 +69,7 @@ export function FirmwarePage() {
             <th>Arquivo</th>
             <th>SHA-256</th>
             <th>Enviado em</th>
+            <th />
           </tr>
         </thead>
         <tbody>
@@ -67,6 +79,11 @@ export function FirmwarePage() {
               <td>{f.filename}</td>
               <td style={{ fontFamily: 'monospace', fontSize: '0.75rem' }}>{f.sha256.slice(0, 12)}…</td>
               <td>{new Date(f.created_at).toLocaleString('pt-BR')}</td>
+              <td>
+                <button className="danger" onClick={() => remove(f)}>
+                  Remover
+                </button>
+              </td>
             </tr>
           ))}
         </tbody>

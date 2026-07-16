@@ -1,9 +1,9 @@
 import type { FastifyInstance } from 'fastify';
 import { createHash } from 'node:crypto';
 import { createReadStream } from 'node:fs';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { createFirmware, getFirmwareByVersion, getSensorByToken, listFirmwares } from '../db/queries.js';
+import { createFirmware, deleteFirmware, getFirmwareByVersion, getSensorByToken, listFirmwares } from '../db/queries.js';
 
 // Relativo ao cwd do processo (server/, tanto em dev quanto no container — ver Dockerfile/compose).
 const FIRMWARE_DIR = path.join(process.cwd(), 'firmware-bin');
@@ -39,6 +39,13 @@ export async function firmwareRoutes(app: FastifyInstance): Promise<void> {
     }
 
     return createFirmware(version, saved.filename, saved.sha256);
+  });
+
+  app.delete<{ Params: { version: string } }>('/api/firmware/:version', async (req, reply) => {
+    const fw = await deleteFirmware(req.params.version);
+    if (!fw) throw Object.assign(new Error('versão não encontrada'), { statusCode: 404 });
+    await rm(path.join(FIRMWARE_DIR, fw.filename), { force: true });
+    reply.status(204);
   });
 
   // Device — auth por token (header OU querystring, ver GOTCHA da Task 12/net.cpp). Pública (index.ts: /api/ota/*).

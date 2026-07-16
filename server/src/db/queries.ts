@@ -414,6 +414,9 @@ export const createFirmware = (version: string, filename: string, sha256: string
     )
     .then((r) => r.rows[0]);
 
+export const deleteFirmware = (version: string) =>
+  pool.query<Firmware>('DELETE FROM firmware WHERE version = $1 RETURNING *', [version]).then((r) => r.rows[0]);
+
 export interface MessageTemplate {
   key: string;
   whatsapp: string;

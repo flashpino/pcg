@@ -43,6 +43,7 @@ export function SensorsPage() {
   const [clients, setClients] = useState<Client[]>([]);
   const [firmwares, setFirmwares] = useState<Firmware[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
   const [selected, setSelected] = useState<number | null>(null);
   const [readings, setReadings] = useState<ReadingPoint[]>([]);
 
@@ -62,21 +63,35 @@ export function SensorsPage() {
       .catch((err) => setError(err.message));
   }, [selected]);
 
-  async function patch(sensor: Sensor, patch: Record<string, unknown>) {
-    await api.patch(`/api/sensors/${sensor.id}`, patch);
-    load();
+  // Toda mutação passa por aqui — sem isso, uma falha na requisição (auth expirada,
+  // rede) ficava muda: nada na tela indicava se o clique funcionou ou não.
+  async function runMutation(action: () => Promise<unknown>, successMessage: string) {
+    setError(null);
+    setMessage(null);
+    try {
+      await action();
+      load();
+      setMessage(successMessage);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'falha ao salvar');
+    }
   }
 
-  async function remove(sensor: Sensor) {
+  function patch(sensor: Sensor, patch: Record<string, unknown>) {
+    return runMutation(() => api.patch(`/api/sensors/${sensor.id}`, patch), 'Salvo.');
+  }
+
+  function remove(sensor: Sensor) {
     if (!window.confirm(`Remover sensor "${sensor.name}"?`)) return;
-    await api.del(`/api/sensors/${sensor.id}`);
-    load();
+    return runMutation(() => api.del(`/api/sensors/${sensor.id}`), 'Sensor removido.');
   }
 
-  async function applyToClient(sensor: Sensor, version: string | null) {
+  function applyToClient(sensor: Sensor, version: string | null) {
     const siblings = sensors.filter((s) => s.client_id === sensor.client_id && s.client_id !== null);
-    await Promise.all(siblings.map((s) => api.patch(`/api/sensors/${s.id}`, { target_firmware: version })));
-    load();
+    return runMutation(
+      () => Promise.all(siblings.map((s) => api.patch(`/api/sensors/${s.id}`, { target_firmware: version }))),
+      `Firmware ${version ?? '(latest)'} aplicado a ${siblings.length} sensor(es).`,
+    );
   }
 
   function numberOrNull(v: string): number | null {
@@ -87,6 +102,7 @@ export function SensorsPage() {
     <main>
       <h2>Sensores</h2>
       {error && <p className="error">{error}</p>}
+      {message && <p className="success">{message}</p>}
       <table>
         <thead>
           <tr>

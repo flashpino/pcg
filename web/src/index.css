@@ -138,6 +138,15 @@ button.danger {
   font-family: "Consolas", monospace;
   font-size: 0.85rem;
 }
+.success {
+  color: var(--ok);
+  margin: 0.5rem 0;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--ok);
+  background: rgba(46, 160, 67, 0.1);
+  font-family: "Consolas", monospace;
+  font-size: 0.85rem;
+}
 .card {
   background: var(--steel);
   border: 1px solid var(--steel-line);
