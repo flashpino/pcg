@@ -286,15 +286,9 @@ static void updateHeader() {
   lv_label_set_text(deviceNameLabel,
                      WiFi.status() == WL_CONNECTED ? WiFi.SSID().c_str() : storage::loadDeviceName().c_str());
 
-  // ASCII puro — os caracteres de bloco Unicode (▂▄▆█) não existem no subset de fonte
-  // compilado (lv_conf.h só habilita LV_FONT_MONTSERRAT_*, sem esse range), e viravam
-  // caixinha vazia (tofu) na tela real (achado em bancada).
-  const char* bars = "|";  // fraco
-  int32_t rssi = lastNetEvent.rssi;
-  if (rssi > -55) bars = "||||";       // ótimo
-  else if (rssi > -67) bars = "|||";   // bom
-  else if (rssi > -78) bars = "||";    // fraco
-  lv_label_set_text(rssiLabel, bars);
+  char rssiBuf[12];
+  snprintf(rssiBuf, sizeof(rssiBuf), "%d dBm", lastNetEvent.rssi);
+  lv_label_set_text(rssiLabel, rssiBuf);
 }
 
 // --- Tela de PIN -------------------------------------------------------------------------------

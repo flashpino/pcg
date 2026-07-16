@@ -212,6 +212,7 @@ static void publish(QueueHandle_t uiQueue, Status status, bool hasReading, float
 static void task(void* pvParameters) {
   QueueHandle_t uiQueue = static_cast<QueueHandle_t>(pvParameters);
   esp_task_wdt_add(NULL);
+  dht.begin();  // faltava — sem isso a lib nunca configura o pino, toda leitura dá NaN
 
   bool provisioned = storage::hasDeviceToken();
 
