@@ -40,7 +40,7 @@ Saberemos que acertamos quando um admin conseguir identificar se qualquer sensor
 | # | Milestone | Outcome | Status | Plan |
 |---|---|---|---|---|
 | 1 | Dashboard consolidado | Admin abre o painel e já vê KPIs + status de todo sensor + eventos recentes, sem navegar | in-progress | `.claude/plans/painel-dashboard-redesign.plan.md` |
-| 2 | Contatos como sub-seção de Clientes | Contato só é criado/editado a partir da tela do cliente ao qual pertence | pending | — |
+| 2 | Contatos como sub-seção de Clientes | Contato só é criado/editado a partir da tela do cliente ao qual pertence | in-progress | `.claude/plans/painel-dashboard-redesign-contatos-em-clientes.plan.md` |
 | 3 | Aba Admins | Admin com acesso consegue criar/remover outros usuários admin pelo painel | pending | — |
 | 4 | Portal do cliente final | Cliente faz login e vê só os próprios sensores, leituras e alertas | pending | — |
 

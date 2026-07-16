@@ -1,11 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api.js';
 
-interface Client {
-  id: number;
-  name: string;
-}
-
 interface Contact {
   id: number;
   client_id: number;
@@ -24,35 +19,35 @@ interface Contact {
 
 const DIAS = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sab'];
 
-const EMPTY_FORM = {
-  client_id: '',
-  name: '',
-  phone: '',
-  alert_temperature: true,
-  alert_connectivity: true,
-  channel_voice: true,
-  channel_whatsapp: true,
-  renotify_minutes: 60,
-  days_of_week: [1, 2, 3, 4, 5] as number[],
-  window_start: '07:00',
-  window_end: '18:00',
-  timezone: 'America/Sao_Paulo',
-  welcome: false,
-};
+function emptyForm(clientId: number) {
+  return {
+    client_id: clientId,
+    name: '',
+    phone: '',
+    alert_temperature: true,
+    alert_connectivity: true,
+    channel_voice: true,
+    channel_whatsapp: true,
+    renotify_minutes: 60,
+    days_of_week: [1, 2, 3, 4, 5] as number[],
+    window_start: '07:00',
+    window_end: '18:00',
+    timezone: 'America/Sao_Paulo',
+    welcome: false,
+  };
+}
 
-export function ContactsPage() {
+export function ClientContacts({ clientId }: { clientId: number }) {
   const [contacts, setContacts] = useState<Contact[]>([]);
-  const [clients, setClients] = useState<Client[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<number | null>(null);
-  const [form, setForm] = useState(EMPTY_FORM);
+  const [form, setForm] = useState(emptyForm(clientId));
 
   function load() {
-    api.get<Contact[]>('/api/contacts').then(setContacts).catch((err) => setError(err.message));
-    api.get<Client[]>('/api/clients').then(setClients).catch(() => {});
+    api.get<Contact[]>(`/api/contacts?clientId=${clientId}`).then(setContacts).catch((err) => setError(err.message));
   }
 
-  useEffect(load, []);
+  useEffect(load, [clientId]);
 
   function toggleDay(day: number) {
     setForm((f) => ({
@@ -63,19 +58,18 @@ export function ContactsPage() {
 
   function edit(c: Contact) {
     setEditingId(c.id);
-    setForm({ ...c, client_id: String(c.client_id), welcome: false });
+    setForm({ ...c, welcome: false });
   }
 
   function cancelEdit() {
     setEditingId(null);
-    setForm(EMPTY_FORM);
+    setForm(emptyForm(clientId));
   }
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
-    const { welcome, client_id, ...rest } = form;
-    const body = { ...rest, client_id: Number(client_id) };
+    const { welcome, ...body } = form;
     try {
       if (editingId) {
         await api.patch(`/api/contacts/${editingId}`, body);
@@ -107,20 +101,11 @@ export function ContactsPage() {
   }
 
   return (
-    <main>
-      <h2>Contatos</h2>
+    <div>
       {error && <p className="error">{error}</p>}
       <form className="card" onSubmit={submit}>
         <h3>{editingId ? 'Editar contato' : 'Novo contato'}</h3>
         <div className="inline">
-          <select value={form.client_id} onChange={(e) => setForm((f) => ({ ...f, client_id: e.target.value }))} required>
-            <option value="">cliente...</option>
-            {clients.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </select>
           <input placeholder="nome" value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} required />
           <input
             placeholder="telefone (E.164, ex +5511999999999)"
@@ -219,7 +204,6 @@ export function ContactsPage() {
           <tr>
             <th>Nome</th>
             <th>Telefone</th>
-            <th>Cliente</th>
             <th>Janela</th>
             <th />
           </tr>
@@ -229,7 +213,6 @@ export function ContactsPage() {
             <tr key={c.id}>
               <td>{c.name}</td>
               <td>{c.phone}</td>
-              <td>{clients.find((cl) => cl.id === c.client_id)?.name ?? c.client_id}</td>
               <td>
                 {c.days_of_week.map((d) => DIAS[d]).join('/')} {c.window_start}-{c.window_end}
               </td>
@@ -251,6 +234,6 @@ export function ContactsPage() {
           ))}
         </tbody>
       </table>
-    </main>
+    </div>
   );
 }

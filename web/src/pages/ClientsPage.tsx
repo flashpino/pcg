@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api.js';
+import { ClientContacts } from './ClientContacts.js';
 
 interface Client {
   id: number;
@@ -10,6 +11,7 @@ export function ClientsPage() {
   const [clients, setClients] = useState<Client[]>([]);
   const [name, setName] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [expandedClientId, setExpandedClientId] = useState<number | null>(null);
 
   function load() {
     api.get<Client[]>('/api/clients').then(setClients).catch((err) => setError(err.message));
@@ -62,6 +64,9 @@ export function ClientsPage() {
             <tr key={c.id}>
               <td>{c.name}</td>
               <td>
+                <button className="secondary" onClick={() => setExpandedClientId(expandedClientId === c.id ? null : c.id)}>
+                  {expandedClientId === c.id ? '▾' : '▸'} Contatos
+                </button>{' '}
                 <button className="secondary" onClick={() => rename(c)}>
                   Renomear
                 </button>{' '}
@@ -73,6 +78,13 @@ export function ClientsPage() {
           ))}
         </tbody>
       </table>
+
+      {expandedClientId !== null && (
+        <div style={{ marginTop: '1rem' }}>
+          <h2>Contatos — {clients.find((c) => c.id === expandedClientId)?.name}</h2>
+          <ClientContacts clientId={expandedClientId} />
+        </div>
+      )}
     </main>
   );
 }

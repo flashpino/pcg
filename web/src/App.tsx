@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react';
 import { api } from './api.js';
 import { AlertsPage } from './pages/AlertsPage.js';
 import { ClientsPage } from './pages/ClientsPage.js';
-import { ContactsPage } from './pages/ContactsPage.js';
 import { DashboardPage } from './pages/DashboardPage.js';
 import { FirmwarePage } from './pages/FirmwarePage.js';
 import { LoginPage } from './pages/LoginPage.js';
@@ -12,7 +11,6 @@ const TABS = [
   { id: 'dashboard', label: 'Dashboard', Page: DashboardPage },
   { id: 'clients', label: 'Clientes', Page: ClientsPage },
   { id: 'sensors', label: 'Sensores', Page: SensorsPage },
-  { id: 'contacts', label: 'Contatos', Page: ContactsPage },
   { id: 'alerts', label: 'Alertas', Page: AlertsPage },
   { id: 'firmware', label: 'Firmware', Page: FirmwarePage },
 ] as const;
