@@ -178,11 +178,10 @@ static void buildDashboard() {
 
   // ponytail: transform_zoom pra aumentar o número foi tentado e revertido — no LVGL
   // ele amplia o desenho mas não expande a área de recorte/redesenho do widget, e o
-  // conteúdo simplesmente sumiu na tela real. 32pt é o maior tamanho de fonte já
-  // compilado (Flash em 95%, Task 13) — aumentar de verdade exige habilitar mais um
-  // LV_FONT_MONTSERRAT_* no lv_conf.h e checar se ainda cabe no particionamento.
+  // conteúdo simplesmente sumiu na tela real. Solução real: habilitar LV_FONT_MONTSERRAT_48
+  // no lv_conf.h (feito) e usar essa fonte diretamente no label.
   tempValueLabel = lv_label_create(tempPanel);
-  lv_obj_set_style_text_font(tempValueLabel, &lv_font_montserrat_32, 0);
+  lv_obj_set_style_text_font(tempValueLabel, &lv_font_montserrat_48, 0);
   lv_label_set_text(tempValueLabel, "--.-");
   lv_obj_align(tempValueLabel, LV_ALIGN_TOP_MID, 0, 20);
 
@@ -213,7 +212,7 @@ static void buildDashboard() {
   lv_obj_align(humLabel, LV_ALIGN_TOP_MID, 0, 2);
 
   humValueLabel = lv_label_create(humPanel);
-  lv_obj_set_style_text_font(humValueLabel, &lv_font_montserrat_32, 0);
+  lv_obj_set_style_text_font(humValueLabel, &lv_font_montserrat_48, 0);
   lv_label_set_text(humValueLabel, "--.-");
   lv_obj_align(humValueLabel, LV_ALIGN_TOP_MID, 0, 20);
 

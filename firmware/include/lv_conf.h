@@ -17,9 +17,10 @@
 #define LV_USE_LOG 0
 #define LV_USE_PERF_MONITOR 0
 
+// ponytail: só 14 (padrão) e 48 (números do dashboard) são usadas em ui.cpp — 20/32
+// nunca foram referenciadas e custavam ~67KB de Flash à toa.
 #define LV_FONT_MONTSERRAT_14 1
-#define LV_FONT_MONTSERRAT_20 1
-#define LV_FONT_MONTSERRAT_32 1
+#define LV_FONT_MONTSERRAT_48 1
 #define LV_FONT_DEFAULT &lv_font_montserrat_14
 
 #define LV_USE_CHART 1
