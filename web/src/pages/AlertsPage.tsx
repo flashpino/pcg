@@ -27,12 +27,20 @@ export function AlertsPage() {
   const [state, setState] = useState<'' | 'firing' | 'resolved'>('firing');
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
+  function load() {
     api
       .get<Alert[]>(`/api/alerts${state ? `?state=${state}` : ''}`)
       .then(setAlerts)
       .catch((err) => setError(err.message));
-  }, [state]);
+  }
+
+  useEffect(load, [state]);
+
+  async function resolve(a: Alert) {
+    if (!window.confirm(`Marcar o alerta de ${a.type} (sensor #${a.sensor_id}) como resolvido?`)) return;
+    await api.post(`/api/alerts/${a.id}/resolve`);
+    load();
+  }
 
   return (
     <main>
@@ -55,6 +63,13 @@ export function AlertsPage() {
             sensor #{a.sensor_id} — disparado em {new Date(a.fired_at).toLocaleString('pt-BR')}
             {a.resolved_at && ` — resolvido em ${new Date(a.resolved_at).toLocaleString('pt-BR')}`}
           </small>
+          {a.state === 'firing' && (
+            <p>
+              <button className="secondary" onClick={() => resolve(a)}>
+                Marcar como resolvido
+              </button>
+            </p>
+          )}
           {a.notifications.length > 0 && (
             <table style={{ marginTop: '0.5rem' }}>
               <thead>
