@@ -36,8 +36,12 @@ static void dispFlush(lv_disp_drv_t* drv, const lv_area_t* area, lv_color_t* col
 static void touchRead(lv_indev_drv_t* drv, lv_indev_data_t* data) {
   if (touchCtrl.touched()) {
     TS_Point p = touchCtrl.getPoint();
-    data->point.x = constrain(map(p.x, calib.xMin, calib.xMax, 0, SCREEN_W), 0, SCREEN_W - 1);
-    data->point.y = constrain(map(p.y, calib.yMin, calib.yMax, 0, SCREEN_H), 0, SCREEN_H - 1);
+    // BUG real: os alvos de calibração ficam a 20px da borda (CALIB_TARGETS), não em
+    // 0/SCREEN_W — mapear xMin/xMax pra 0/SCREEN_W introduzia um erro de escala
+    // sistemático (pior quanto mais longe do centro), explicando o desvio tipo
+    // "clico numa tecla e sai a vizinha" relatado em bancada.
+    data->point.x = constrain(map(p.x, calib.xMin, calib.xMax, 20, SCREEN_W - 20), 0, SCREEN_W - 1);
+    data->point.y = constrain(map(p.y, calib.yMin, calib.yMax, 20, SCREEN_H - 20), 0, SCREEN_H - 1);
     data->state = LV_INDEV_STATE_PRESSED;
   } else {
     data->state = LV_INDEV_STATE_RELEASED;
