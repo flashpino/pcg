@@ -4,6 +4,7 @@ import {
   createNotification,
   createResolvedAlert,
   deleteContact,
+  getClient,
   getContact,
   getMessageTemplate,
   listContactAlertPrefs,
@@ -14,6 +15,7 @@ import {
   type ContactAlertPref,
   type ContactInput,
 } from '../db/queries.js';
+import { renderTemplate } from '../services/messageTemplates.js';
 import { enqueueVoice, enqueueWhatsapp } from '../services/notifier.js';
 
 // Boas-vindas/teste não são alertas reais, mas notifications.alert_id é NOT NULL — pendura
@@ -22,7 +24,8 @@ async function syntheticAlertFor(clientId: number, message: string) {
   const sensors = await listSensors(clientId);
   const sensor = sensors[0];
   if (!sensor) throw Object.assign(new Error('cliente sem sensor cadastrado'), { statusCode: 400 });
-  return createResolvedAlert(sensor.id, 'test', message);
+  const alert = await createResolvedAlert(sensor.id, 'test', message);
+  return { alert, sensor };
 }
 
 export async function contactsRoutes(app: FastifyInstance): Promise<void> {
@@ -86,14 +89,21 @@ export async function contactsRoutes(app: FastifyInstance): Promise<void> {
     const contact = await getContact(Number(req.params.id));
     if (!contact) throw Object.assign(new Error('contato não encontrado'), { statusCode: 404 });
 
-    const alert = await syntheticAlertFor(contact.client_id, `Boas-vindas para ${contact.name}`);
+    const { alert, sensor } = await syntheticAlertFor(contact.client_id, `Boas-vindas para ${contact.name}`);
     // Texto vem de message_templates (painel > Mensagens); env WELCOME_TEMPLATE segue como
     // fallback pra instalações antigas cujo banco ainda não tem a chave 'welcome'.
     // Placeholder %name% (não {{name}}) no env — {{...}} é sintaxe de template do EasyPanel e
     // quebra a expansão de env vars na UI dele antes mesmo do container subir.
     const tpl = await getMessageTemplate('welcome');
+    const client = await getClient(contact.client_id);
     const text = tpl
-      ? tpl.whatsapp.replaceAll('{{$nome}}', contact.name)
+      ? renderTemplate(tpl.whatsapp, {
+          nome: contact.name,
+          telefone: contact.phone,
+          cliente: client?.name ?? '',
+          sensor: sensor.name,
+          local: sensor.local ?? '',
+        })
       : (process.env.WELCOME_TEMPLATE ?? 'Olá %name%! Você foi cadastrado no monitoramento PCG.').replace('%name%', contact.name);
     const notification = await createNotification(alert.id, contact.id, 'whatsapp', 'queued', 'welcome');
     await enqueueWhatsapp({ notificationId: notification.id, phone: contact.phone, text });
@@ -104,7 +114,7 @@ export async function contactsRoutes(app: FastifyInstance): Promise<void> {
     const contact = await getContact(Number(req.params.id));
     if (!contact) throw Object.assign(new Error('contato não encontrado'), { statusCode: 404 });
 
-    const alert = await syntheticAlertFor(contact.client_id, `Teste manual para ${contact.name}`);
+    const { alert } = await syntheticAlertFor(contact.client_id, `Teste manual para ${contact.name}`);
     const text = `Teste PCG: canal de notificação de ${contact.name} funcionando.`;
     if (contact.channel_whatsapp) {
       const n = await createNotification(alert.id, contact.id, 'whatsapp', 'queued', 'test');

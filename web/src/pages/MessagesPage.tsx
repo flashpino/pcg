@@ -30,7 +30,7 @@ const LEGEND: Record<string, string[]> = {
   connectivity_renotify: ['sensor', 'local', 'cliente', 'temperatura', 'min', 'max', 'limite', 'segundos'],
   hardware_fire: ['sensor', 'local', 'cliente', 'segundos'],
   hardware_resolve: ['sensor', 'local', 'cliente', 'segundos'],
-  welcome: ['nome'],
+  welcome: ['nome', 'telefone', 'cliente', 'sensor', 'local'],
 };
 
 function TemplateForm({ tpl, onSaved }: { tpl: Template; onSaved: () => void }) {
