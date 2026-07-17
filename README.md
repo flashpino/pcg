@@ -7,7 +7,7 @@ Sistema multi-cliente: ESP32-2432S028 (CYD) + DHT22 → backend Node/TypeScript 
 ```
 server/    backend Fastify (API, alertas, filas, OTA)
 web/       painel React (Vite)
-firmware/  PlatformIO — ESP32 CYD + DHT22
+firmware/  PlatformIO — ESP32 CYD + DHT22 (build/upload/variantes de tela: firmware/README.md)
 ```
 
 ## Documentação de trabalho
