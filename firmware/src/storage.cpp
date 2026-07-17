@@ -40,8 +40,13 @@ void saveDeviceToken(const String& token) {
 }
 
 String loadDeviceName() {
-  String name = prefs.getString("device_name", "");
-  if (name.length() > 0) return name;
+  // isKey() antes do getString() — evita o log_e("nvs_get_str len fail...") que a lib
+  // Preferences solta toda vez que a chave não existe, mesmo caindo direitinho no
+  // fallback (spam no serial monitor a cada updateHeader(), 1x/s, enquanto offline).
+  if (prefs.isKey("device_name")) {
+    String name = prefs.getString("device_name", "");
+    if (name.length() > 0) return name;
+  }
   // default: "esp32-" + últimos 4 dígitos hex do MAC (sem UI ainda pra trocar — Task 13)
   String mac = WiFi.macAddress();
   mac.replace(":", "");
