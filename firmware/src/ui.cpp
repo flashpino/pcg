@@ -272,10 +272,26 @@ static void updateDashboardReading(float temp, float hum) {
   snprintf(buf, sizeof(buf), "%.0f", hum);
   lv_label_set_text(humValueLabel, buf);
 
-  lv_chart_set_next_value(tempChart, tempSeries, (lv_coord_t)(temp * 10));
-  lv_chart_set_next_value(humChart, humSeries, (lv_coord_t)(hum * 10));
-  autoscaleChart(tempChart, tempSeries);
-  autoscaleChart(humChart, humSeries);
+  // Sparkline agregado: 1 ponto = média de 5 min, então a janela de 50 pontos cobre ~4h —
+  // e não "tempo real" de ~1 ponto/leitura. A 1ª leitura entra direto pra tela não ficar vazia.
+  static constexpr uint32_t CHART_POINT_MS = 5UL * 60UL * 1000UL;
+  static uint32_t chartWindowStart = 0;
+  static float accTemp = 0, accHum = 0;
+  static uint16_t accCount = 0;
+  accTemp += temp;
+  accHum += hum;
+  accCount++;
+  uint32_t nowMs = millis();
+  bool firstPoint = chartWindowStart == 0;
+  if (firstPoint || nowMs - chartWindowStart >= CHART_POINT_MS) {
+    lv_chart_set_next_value(tempChart, tempSeries, (lv_coord_t)(accTemp / accCount * 10));
+    lv_chart_set_next_value(humChart, humSeries, (lv_coord_t)(accHum / accCount * 10));
+    autoscaleChart(tempChart, tempSeries);
+    autoscaleChart(humChart, humSeries);
+    accTemp = accHum = 0;
+    accCount = 0;
+    chartWindowStart = nowMs;
+  }
 
   time_t now = time(nullptr);
   struct tm tmNow;
