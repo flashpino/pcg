@@ -133,23 +133,29 @@ static void buildDashboard() {
   lv_obj_align(header, LV_ALIGN_TOP_MID, 0, 0);
   lv_obj_set_flex_flow(header, LV_FLEX_FLOW_ROW);
   lv_obj_set_flex_align(header, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+  lv_obj_set_style_bg_color(header, lv_color_hex(0xFBF9F5), 0);  // D_HEADER do antigo — branco quente
+  lv_obj_set_style_border_width(header, 0, 0);
 
   lv_obj_t* clockGroup = lv_obj_create(header);
   lv_obj_set_size(clockGroup, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
   lv_obj_set_flex_flow(clockGroup, LV_FLEX_FLOW_ROW);
   lv_obj_add_flag(clockGroup, LV_OBJ_FLAG_CLICKABLE);
   lv_obj_add_event_cb(clockGroup, onClockClicked, LV_EVENT_CLICKED, nullptr);
+  lv_obj_set_style_bg_opa(clockGroup, LV_OPA_TRANSP, 0);
+  lv_obj_set_style_border_width(clockGroup, 0, 0);
 
   statusDot = lv_obj_create(clockGroup);
   lv_obj_set_size(statusDot, 10, 10);
   lv_obj_set_style_radius(statusDot, LV_RADIUS_CIRCLE, 0);
-  lv_obj_set_style_bg_color(statusDot, lv_palette_main(LV_PALETTE_GREY), 0);
+  lv_obj_set_style_bg_color(statusDot, lv_color_hex(0xCCCCCC), 0);  // D_BAR_OFF — cinza, offline
 
   clockLabel = lv_label_create(clockGroup);
   lv_label_set_text(clockLabel, "--:--");
+  lv_obj_set_style_text_color(clockLabel, lv_color_hex(0x222222), 0);  // D_TIME
 
   dateLabel = lv_label_create(clockGroup);
   lv_label_set_text(dateLabel, "");
+  lv_obj_set_style_text_color(dateLabel, lv_color_hex(0x9A9A9A), 0);  // D_DATE
 
   // Escondido a pedido — header só com relógio/status à esquerda e sinal à direita.
   // O label continua existindo (não usado no header) porque a tela de renomear device
@@ -162,14 +168,18 @@ static void buildDashboard() {
   lv_obj_set_size(signalGroup, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
   lv_obj_add_flag(signalGroup, LV_OBJ_FLAG_CLICKABLE);
   lv_obj_add_event_cb(signalGroup, onSignalClicked, LV_EVENT_CLICKED, nullptr);
+  lv_obj_set_style_bg_opa(signalGroup, LV_OPA_TRANSP, 0);
+  lv_obj_set_style_border_width(signalGroup, 0, 0);
   rssiLabel = lv_label_create(signalGroup);
   lv_label_set_text(rssiLabel, LV_SYMBOL_WIFI);
+  lv_obj_set_style_text_color(rssiLabel, lv_color_hex(0x555555), 0);  // D_BAR_ON
 
   // dois painéis lado a lado
   lv_obj_t* tempPanel = lv_obj_create(scrDashboard);
   lv_obj_set_size(tempPanel, SCREEN_W / 2 - 2, SCREEN_H - 32);
   lv_obj_align(tempPanel, LV_ALIGN_BOTTOM_LEFT, 0, 0);
   lv_obj_set_style_bg_color(tempPanel, lv_color_hex(0xFAF5EC), 0);
+  lv_obj_clear_flag(tempPanel, LV_OBJ_FLAG_SCROLLABLE);
 
   lv_obj_t* tempLabel = lv_label_create(tempPanel);
   lv_label_set_text(tempLabel, "TEMPERATURA");
@@ -205,6 +215,7 @@ static void buildDashboard() {
   lv_obj_set_size(humPanel, SCREEN_W / 2 - 2, SCREEN_H - 32);
   lv_obj_align(humPanel, LV_ALIGN_BOTTOM_RIGHT, 0, 0);
   lv_obj_set_style_bg_color(humPanel, lv_color_hex(0xEEF3F8), 0);
+  lv_obj_clear_flag(humPanel, LV_OBJ_FLAG_SCROLLABLE);
 
   lv_obj_t* humLabel = lv_label_create(humPanel);
   lv_label_set_text(humLabel, "UMIDADE");
@@ -288,7 +299,12 @@ static void updateHeader() {
   }
 
   bool online = lastNetEvent.status == net::Status::ONLINE;
-  lv_obj_set_style_bg_color(statusDot, online ? lv_palette_main(LV_PALETTE_GREEN) : lv_palette_main(LV_PALETTE_GREY), 0);
+  // Vermelho = online mas DHT22 travado (sensorStale) — distingue de "sem WiFi" (cinza) e
+  // "tudo ok" (verde), sem precisar de um widget novo no header.
+  lv_color_t dotColor = !online ? lv_palette_main(LV_PALETTE_GREY)
+                      : lastNetEvent.sensorStale ? lv_palette_main(LV_PALETTE_RED)
+                                                 : lv_palette_main(LV_PALETTE_GREEN);
+  lv_obj_set_style_bg_color(statusDot, dotColor, 0);
 
   // Referência mostra o SSID conectado, não o nome do device — cai pro nome do device
   // (configurável no menu) enquanto não há WiFi, pra não ficar em branco.
@@ -562,12 +578,12 @@ static void buildNetInfoScreen() {
 }
 
 static void showNetInfo() {
-  char buf[320];
+  char buf[350];
   snprintf(buf, sizeof(buf),
-           "SSID: %s\nIP: %s\nMascara: %s\nGateway: %s\nDNS: %s\nMAC: %s\nRSSI: %d dBm\nFW: %s\nUptime: %lus",
+           "SSID: %s\nIP: %s\nMascara: %s\nGateway: %s\nDNS: %s\nMAC: %s\nRSSI: %d dBm\nFW: %s\nUptime: %lus\nSensor: %s",
            WiFi.SSID().c_str(), WiFi.localIP().toString().c_str(), WiFi.subnetMask().toString().c_str(),
            WiFi.gatewayIP().toString().c_str(), WiFi.dnsIP().toString().c_str(), WiFi.macAddress().c_str(),
-           WiFi.RSSI(), FW_VERSION, millis() / 1000);
+           WiFi.RSSI(), FW_VERSION, millis() / 1000, lastNetEvent.sensorStale ? "sem resposta" : "OK");
   lv_label_set_text(netInfoLabel, buf);
   lv_scr_load(scrNetInfo);
 }

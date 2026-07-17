@@ -18,6 +18,7 @@ enum class Status : uint8_t {
 struct Event {
   Status status;
   bool hasReading;
+  bool sensorStale;  // DHT22 sem leitura válida há várias tentativas seguidas (travado)
   float temp;
   float hum;
   int16_t rssi;

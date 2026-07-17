@@ -4,12 +4,14 @@ import { api } from '../api.js';
 interface Admin {
   id: number;
   email: string;
+  phone: string | null;
 }
 
 export function AdminsPage() {
   const [admins, setAdmins] = useState<Admin[]>([]);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [phone, setPhone] = useState('');
   const [error, setError] = useState<string | null>(null);
 
   function load() {
@@ -22,9 +24,10 @@ export function AdminsPage() {
     e.preventDefault();
     setError(null);
     try {
-      await api.post('/api/admins', { email, password });
+      await api.post('/api/admins', { email, password, phone: phone || undefined });
       setEmail('');
       setPassword('');
+      setPhone('');
       load();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'falha ao criar');
@@ -56,12 +59,19 @@ export function AdminsPage() {
           onChange={(e) => setPassword(e.target.value)}
           required
         />
+        <input
+          placeholder="telefone p/ alerta de hardware (opcional, E.164)"
+          type="tel"
+          value={phone}
+          onChange={(e) => setPhone(e.target.value)}
+        />
         <button type="submit">Adicionar</button>
       </form>
       <table>
         <thead>
           <tr>
             <th>Email</th>
+            <th>Telefone</th>
             <th />
           </tr>
         </thead>
@@ -69,6 +79,7 @@ export function AdminsPage() {
           {admins.map((a) => (
             <tr key={a.id}>
               <td>{a.email}</td>
+              <td>{a.phone ?? '—'}</td>
               <td>
                 <button className="danger" onClick={() => remove(a)}>
                   Remover

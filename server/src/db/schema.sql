@@ -94,6 +94,10 @@ CREATE TABLE IF NOT EXISTS notifications (
   detail TEXT,
   created_at TIMESTAMPTZ DEFAULT now()
 );
+-- Alerta de hardware (Task: telefone de admin) vai pra um admin (users), não pra um contato
+-- de cliente — contact_id vira opcional e admin_id é o outro lado dessa notification.
+ALTER TABLE notifications ALTER COLUMN contact_id DROP NOT NULL;
+ALTER TABLE notifications ADD COLUMN IF NOT EXISTS admin_id INT REFERENCES users(id);
 
 CREATE TABLE IF NOT EXISTS firmware (
   id SERIAL PRIMARY KEY,
@@ -107,6 +111,9 @@ CREATE TABLE IF NOT EXISTS users (
   id SERIAL PRIMARY KEY, email TEXT UNIQUE NOT NULL,
   password_hash TEXT NOT NULL              -- bcrypt; admin only no MVP
 );
+-- Telefone opcional (E.164) — só admins com phone preenchido recebem alerta de hardware
+-- (sensor sem leitura/travado), disparado por evaluateConnectivity em alertService.ts.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS phone TEXT;
 
 -- Textos de alerta configuráveis pelo painel (Mensagens) — {{$var}} substituído em runtime.
 -- voice só é usado em temperature_fire (ligação é exclusiva de alerta de temperatura).

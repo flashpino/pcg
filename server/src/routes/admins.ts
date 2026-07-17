@@ -5,8 +5,8 @@ import { countUsers, createUserRecord, deleteUser, getUserByEmail, listUsers } f
 export async function adminsRoutes(app: FastifyInstance): Promise<void> {
   app.get('/api/admins', async () => listUsers());
 
-  app.post<{ Body: { email: string; password: string } }>('/api/admins', async (req, reply) => {
-    const { email, password } = req.body ?? {};
+  app.post<{ Body: { email: string; password: string; phone?: string } }>('/api/admins', async (req, reply) => {
+    const { email, password, phone } = req.body ?? {};
     if (!email || !password || password.length < 8) {
       throw Object.assign(new Error('email e senha (mín. 8 caracteres) obrigatórios'), { statusCode: 400 });
     }
@@ -15,7 +15,7 @@ export async function adminsRoutes(app: FastifyInstance): Promise<void> {
     }
     const hash = await bcrypt.hash(password, 10);
     reply.status(201);
-    return createUserRecord(email, hash);
+    return createUserRecord(email, hash, phone || null);
   });
 
   // Nunca deixar o sistema sem nenhum admin — não há super-admin (todo admin tem acesso

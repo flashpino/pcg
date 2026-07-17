@@ -12,20 +12,27 @@ export const getUserByEmail = (email: string) =>
 export interface AdminSummary {
   id: number;
   email: string;
+  phone: string | null;
 }
 
 // Nunca seleciona password_hash de volta pro painel.
 export const listUsers = () =>
-  pool.query<AdminSummary>('SELECT id, email FROM users ORDER BY email').then((r) => r.rows);
+  pool.query<AdminSummary>('SELECT id, email, phone FROM users ORDER BY email').then((r) => r.rows);
+
+// Só quem tem telefone cadastrado recebe alerta de hardware (sensor travado/sem leitura).
+export const listAdminsWithPhone = () =>
+  pool
+    .query<AdminSummary>("SELECT id, email, phone FROM users WHERE phone IS NOT NULL AND phone <> ''")
+    .then((r) => r.rows);
 
 export const countUsers = () => pool.query('SELECT COUNT(*) FROM users').then((r) => Number(r.rows[0].count));
 
-export const createUserRecord = (email: string, passwordHash: string) =>
+export const createUserRecord = (email: string, passwordHash: string, phone: string | null = null) =>
   pool
-    .query<AdminSummary>('INSERT INTO users (email, password_hash) VALUES ($1, $2) RETURNING id, email', [
-      email,
-      passwordHash,
-    ])
+    .query<AdminSummary>(
+      'INSERT INTO users (email, password_hash, phone) VALUES ($1, $2, $3) RETURNING id, email, phone',
+      [email, passwordHash, phone],
+    )
     .then((r) => r.rows[0]);
 
 export const deleteUser = (id: number) =>
@@ -300,7 +307,8 @@ export const resolveAlert = (id: number) =>
 export interface Notification {
   id: number;
   alert_id: number;
-  contact_id: number;
+  contact_id: number | null;
+  admin_id: number | null;
   channel: 'voice' | 'whatsapp';
   status: string;
   detail: string | null;
@@ -318,6 +326,22 @@ export const createNotification = (
     .query<Notification>(
       'INSERT INTO notifications (alert_id, contact_id, channel, status, detail) VALUES ($1, $2, $3, $4, $5) RETURNING *',
       [alertId, contactId, channel, status, detail],
+    )
+    .then((r) => r.rows[0]);
+
+// Alerta de hardware vai pra um admin (users), não pra um contato de cliente — mesma tabela
+// notifications, só troca qual FK é preenchida.
+export const createAdminNotification = (
+  alertId: number,
+  adminId: number,
+  channel: Notification['channel'],
+  status = 'queued',
+  detail: string | null = null,
+) =>
+  pool
+    .query<Notification>(
+      'INSERT INTO notifications (alert_id, admin_id, channel, status, detail) VALUES ($1, $2, $3, $4, $5) RETURNING *',
+      [alertId, adminId, channel, status, detail],
     )
     .then((r) => r.rows[0]);
 

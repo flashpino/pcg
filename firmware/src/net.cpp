@@ -50,17 +50,32 @@ static void ringPop(size_t n) {
 }
 
 // --- Leitura do sensor ---------------------------------------------------------------------
-// KEY_INSIGHT: DHT22 retorna NaN em ~5% das leituras — retry 3x com 2.5s (não ler mais rápido
-// que 2s trava o sensor).
+// KEY_INSIGHT: DHT22 retorna NaN em ~5% das leituras, e às vezes um valor "válido" mas
+// espúrio (glitch, não NaN) — por isso colhemos 3 amostras boas e usamos a mediana de
+// cada uma: se uma amostra destoar das outras duas, ela é descartada.
+static float median3(float a, float b, float c) {
+  return max(min(a, b), min(max(a, b), c));
+}
+
 static bool readDht(float& temp, float& hum) {
-  for (int i = 0; i < 3; i++) {
-    hum = dht.readHumidity();
-    temp = dht.readTemperature();
-    if (!isnan(temp) && !isnan(hum)) return true;
+  float temps[3], hums[3];
+  int n = 0;
+  // ponytail: até 5 tentativas p/ conseguir 3 amostras válidas (NaN some ~5% das vezes).
+  for (int attempt = 0; attempt < 5 && n < 3; attempt++) {
+    float h = dht.readHumidity();
+    float t = dht.readTemperature();
+    if (!isnan(t) && !isnan(h)) {
+      temps[n] = t;
+      hums[n] = h;
+      n++;
+    }
     esp_task_wdt_reset();
-    delay(2500);
+    if (n < 3) delay(2500);
   }
-  return false;
+  if (n < 3) return false;
+  temp = median3(temps[0], temps[1], temps[2]);
+  hum = median3(hums[0], hums[1], hums[2]);
+  return true;
 }
 
 // --- WiFi ------------------------------------------------------------------------------------
@@ -213,10 +228,14 @@ static IngestResult sendIngest(const Reading* batch, size_t count) {
 static const uint32_t READ_INTERVAL_MS = 10000;
 static const uint32_t SEND_INTERVAL_MS = 60000;
 
-static void publish(QueueHandle_t uiQueue, Status status, bool hasReading, float temp, float hum, int16_t rssi) {
-  Event evt{status, hasReading, temp, hum, rssi};
+static void publish(QueueHandle_t uiQueue, Status status, bool hasReading, bool sensorStale, float temp, float hum, int16_t rssi) {
+  Event evt{status, hasReading, sensorStale, temp, hum, rssi};
   xQueueOverwrite(uiQueue, &evt);  // fila de tamanho 1: só o estado mais recente importa pra UI
 }
+
+// 3 ciclos de leitura seguidos sem sucesso (~30s+, já contando os 5 retries internos de
+// readDht) — sensor realmente travado, não um glitch isolado que a mediana já filtra.
+static const uint8_t SENSOR_STALE_STREAK = 3;
 
 static void task(void* pvParameters) {
   QueueHandle_t uiQueue = static_cast<QueueHandle_t>(pvParameters);
@@ -225,12 +244,13 @@ static void task(void* pvParameters) {
 
   bool provisioned = storage::hasDeviceToken();
   uint32_t lastSendMs = 0;  // primeiro envio acontece ~60s depois do boot, igual antes
+  uint8_t sensorFailStreak = 0;
 
   for (;;) {
     esp_task_wdt_reset();
 
     if (!ensureConnected()) {
-      publish(uiQueue, Status::OFFLINE, false, 0, 0, 0);
+      publish(uiQueue, Status::OFFLINE, false, false, 0, 0, 0);
       // Sem isso, "sem credencial WiFi" vira busy-loop lendo o NVS sem parar
       // (ensureConnected retorna na hora, sem esperar nada, enquanto o usuário
       // configura a rede pela tela — visto martelando o NVS a ~8ms/iteração em bancada).
@@ -239,13 +259,13 @@ static void task(void* pvParameters) {
     }
 
     if (!provisioned) {
-      publish(uiQueue, Status::PROVISIONING, false, 0, 0, 0);
+      publish(uiQueue, Status::PROVISIONING, false, false, 0, 0, 0);
       String token;
       if (provision(token)) {
         storage::saveDeviceToken(token);
         provisioned = true;
       } else {
-        publish(uiQueue, Status::PROVISION_FAILED, false, 0, 0, 0);
+        publish(uiQueue, Status::PROVISION_FAILED, false, false, 0, 0, 0);
         // Mesmo bug do backoff de WiFi: 30s bloqueados sem esp_task_wdt_reset() no
         // meio bate exatamente no timeout do watchdog (30s) e reinicia o device.
         for (uint32_t waited = 0; waited < 30000; waited += 250) {
@@ -258,6 +278,8 @@ static void task(void* pvParameters) {
 
     float temp = NAN, hum = NAN;
     bool hasReading = readDht(temp, hum);
+    sensorFailStreak = hasReading ? 0 : min<uint16_t>(sensorFailStreak + 1, 255);
+    bool sensorStale = sensorFailStreak >= SENSOR_STALE_STREAK;
     if (hasReading) {
       ringPush(Reading{temp, hum, static_cast<int16_t>(WiFi.RSSI()), millis()});
     }
@@ -278,7 +300,7 @@ static void task(void* pvParameters) {
       }
     }
 
-    publish(uiQueue, Status::ONLINE, hasReading, temp, hum, static_cast<int16_t>(WiFi.RSSI()));
+    publish(uiQueue, Status::ONLINE, hasReading, sensorStale, temp, hum, static_cast<int16_t>(WiFi.RSSI()));
     vTaskDelay(pdMS_TO_TICKS(READ_INTERVAL_MS));
   }
 }

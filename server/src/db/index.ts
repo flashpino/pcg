@@ -39,6 +39,10 @@ const DEFAULT_MESSAGE_TEMPLATES: Record<string, { whatsapp: string; voice?: stri
   connectivity_fire: { whatsapp: 'Sensor {{$sensor}} sem comunicação há mais de {{$segundos}}s.' },
   connectivity_resolve: { whatsapp: 'Sensor {{$sensor}} voltou a reportar.' },
   connectivity_renotify: { whatsapp: 'Sensor {{$sensor}} continua sem comunicação.' },
+  hardware_fire: {
+    whatsapp: '⚠️ Alerta de hardware: sensor {{$sensor}} ({{$cliente}} / {{$local}}) sem leitura válida há mais de {{$segundos}}s. Verifique o dispositivo.',
+  },
+  hardware_resolve: { whatsapp: 'Sensor {{$sensor}} ({{$cliente}} / {{$local}}) voltou a reportar normalmente.' },
 };
 
 // Idempotente (ON CONFLICT DO NOTHING) — não sobrescreve customização já salva pelo admin.

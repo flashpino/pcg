@@ -1,10 +1,12 @@
 import {
+  createAdminNotification,
   createAlert,
   createNotification,
   getClient,
   getFiringAlert,
   getLastNotification,
   getMessageTemplate,
+  listAdminsWithPhone,
   listContactAlertPrefsByClient,
   listContacts,
   resolveAlert,
@@ -195,6 +197,20 @@ export async function evaluate(sensor: Sensor, reading: { temp: number; hum: num
   await evaluateType(sensor, contacts, prefs, 'humidity', reading.hum, { min: sensor.hum_min, max: sensor.hum_max });
 }
 
+// Alerta de hardware pros admins (cadastro > telefone) — mesmo gatilho da conectividade (o
+// firmware não manda nada quando o DHT22 trava, então "sem ingest há offline_after_seconds"
+// já é o sinal disponível), só que só no fire/resolve (sem re-notificar, pra não spammar o
+// time). Sem janela de horário/preferência — é alerta operacional, sempre entregue.
+async function notifyAdminsHardware(alert: Alert, kind: 'fire' | 'resolve', vars: Record<string, string | number>): Promise<void> {
+  const admins = await listAdminsWithPhone();
+  if (admins.length === 0) return;
+  const texts = await renderMessage(`hardware_${kind}`, vars);
+  for (const admin of admins) {
+    const notification = await createAdminNotification(alert.id, admin.id, 'whatsapp');
+    await enqueueWhatsapp({ notificationId: notification.id, phone: admin.phone!, text: texts.whatsapp });
+  }
+}
+
 // Chamado pelo connectivitySweep (Task 9) a cada varredura — `offline` já vem calculado a partir
 // de last_seen_at/offline_after_seconds. Sensor não reivindicado nunca chega aqui (sweep filtra).
 export async function evaluateConnectivity(sensor: Sensor, offline: boolean): Promise<void> {
@@ -211,7 +227,10 @@ export async function evaluateConnectivity(sensor: Sensor, offline: boolean): Pr
     const texts = await renderMessage('connectivity_fire', vars);
     const alert = await createAlert(sensor.id, 'connectivity', null, texts.whatsapp);
     // Sem ligação de voz aqui — voz é exclusiva de alerta de temperatura.
-    if (alert) await notifyContacts(alert, contacts, prefs, 'connectivity', ['whatsapp'], texts, 'fire');
+    if (alert) {
+      await notifyContacts(alert, contacts, prefs, 'connectivity', ['whatsapp'], texts, 'fire');
+      await notifyAdminsHardware(alert, 'fire', vars);
+    }
     return;
   }
 
@@ -219,6 +238,7 @@ export async function evaluateConnectivity(sensor: Sensor, offline: boolean): Pr
     await resolveAlert(firing!.id);
     const texts = await renderMessage('connectivity_resolve', vars);
     await notifyContacts(firing!, contacts, prefs, 'connectivity', ['whatsapp'], texts, 'resolve');
+    await notifyAdminsHardware(firing!, 'resolve', vars);
     return;
   }
 
