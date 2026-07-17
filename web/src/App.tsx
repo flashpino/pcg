@@ -60,8 +60,8 @@ export function App() {
         </div>
         <div className="topbar-right">
           <span className="user-email">{email}</span>
-          <button className="secondary" onClick={logout}>
-            <span className="material-symbols-outlined" style={{ fontSize: '0.9rem' }}>logout</span> Sair
+          <button className="icon-btn" onClick={logout} title="Sair">
+            <span className="material-symbols-outlined">logout</span>
           </button>
         </div>
       </header>

@@ -69,37 +69,46 @@ export function DashboardPage() {
 
       <div className="kpi-grid">
         <div className="kpi-tile">
-          <span className="kpi-value">{kpis.activeClients}</span>
           <span className="kpi-label">Clientes ativos</span>
+          <span className="kpi-value">{kpis.activeClients}</span>
         </div>
         <div className="kpi-tile">
-          <span className="kpi-value">{kpis.sensorsOnline}</span>
           <span className="kpi-label">Sensores online</span>
+          <span className="kpi-value">
+            {kpis.sensorsOnline}
+            <small style={{ fontSize: '0.9rem', fontWeight: 400, color: 'var(--on-surface-variant)' }}>
+              /{kpis.sensorsOnline + kpis.sensorsOffline}
+            </small>
+          </span>
         </div>
         <div className="kpi-tile">
-          <span className="kpi-value">{kpis.sensorsOffline}</span>
-          <span className="kpi-label">Sensores offline</span>
+          <span className="kpi-label">Equipamentos offline</span>
+          <span className="kpi-value" style={kpis.sensorsOffline > 0 ? { color: 'var(--status-yellow)' } : undefined}>
+            {kpis.sensorsOffline}
+          </span>
         </div>
         <div className="kpi-tile">
-          <span className="kpi-value">{kpis.alerts7d}</span>
           <span className="kpi-label">Alertas (7d)</span>
+          <span className="kpi-value" style={kpis.alerts7d > 0 ? { color: 'var(--status-red)' } : undefined}>
+            {kpis.alerts7d}
+          </span>
         </div>
       </div>
 
       <div className="section-title">
-        <h3>Unidades</h3>
+        <h3><span className="material-symbols-outlined">sensors</span> Monitoramento de Dispositivos</h3>
       </div>
       <div className="device-grid">
         {devices.map((d) => (
           <div className={`device-card${d.online ? '' : ' offline'}`} key={d.id}>
             <div className="device-card-header">
               <div>
-                <strong>{d.name}</strong>
-                <div><small>{d.client_name} — {d.mac}</small></div>
+                <strong>{d.client_name}</strong>
+                <div><small>{d.name}</small></div>
+                <div><small style={{ fontFamily: 'var(--mono)', fontSize: '0.62rem' }}>MAC: {d.mac}</small></div>
               </div>
-              <span className={`status-chip ${d.online ? 'online' : 'offline'}`}>
+              <span className={`status-chip ${d.online ? 'online' : 'offline'}`} title={d.online ? 'online' : 'offline'}>
                 <span className="dot" />
-                {d.online ? 'online' : 'offline'}
               </span>
             </div>
             <div className="device-card-readings">
@@ -113,13 +122,13 @@ export function DashboardPage() {
               </div>
             </div>
             <div className="device-card-footer">
+              <span>uptime {d.online ? formatUptime(d.online_since) : '—'}</span>
               <span className="signal-bars" title={d.rssi !== null ? `${d.rssi} dBm` : 'sem leitura'}>
                 {[0, 1, 2, 3].map((i) => (
                   <i key={i} className={i < signalBars(d.rssi) ? 'bar-on' : 'bar-off'} />
                 ))}
                 {d.rssi !== null && ` ${d.rssi} dBm`}
               </span>
-              <span>uptime {d.online ? formatUptime(d.online_since) : '—'}</span>
             </div>
           </div>
         ))}

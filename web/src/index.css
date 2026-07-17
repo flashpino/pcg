@@ -108,9 +108,18 @@ nav.tabs button.active { color: var(--on-surface); border-bottom-color: var(--pr
   font-size: 0.7rem;
   color: var(--on-surface-variant);
 }
-.topbar-right button.secondary {
-  padding: 0.4rem 0.6rem;
+.icon-btn {
+  background: var(--surface);
+  color: var(--on-surface-variant);
+  border: 1px solid var(--outline);
+  border-radius: 0.25rem;
+  padding: 0.4rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
+.icon-btn:hover { background: var(--surface-container-low); color: var(--on-surface); }
+.icon-btn .material-symbols-outlined { font-size: 1.05rem; }
 main {
   max-width: 1440px;
   margin: 0 auto;
