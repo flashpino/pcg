@@ -1,6 +1,6 @@
-#include "snmp_agent.h"
+#include "zabbix_snmp.h"
 
-#include "../.pio/libdeps/esp32dev/SNMP_Agent/src/SNMP_Agent.h"
+#include <SNMP_Agent.h>
 #include <WiFiUdp.h>
 
 // ─── OIDs (base enterprise privada, idêntica ao firmware antigo) ────────────
