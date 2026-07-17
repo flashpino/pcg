@@ -516,10 +516,10 @@ Expected: sem erros.
 - [ ] **Step 8: Verificação manual na aplicação rodando**
 
 Suba o server (`cd server && npm run dev`) e o web (`cd web && npm run dev`), abra a página Sensores, clique em "Calibrar" num sensor com leitura recente no Influx:
-- Confirme que "Leitura atual" aparece.
+- Confirme que "Leitura atual" aparece, com o horário da leitura ao lado.
 - Digite uma temperatura de referência diferente e clique "Aplicar".
 - Confirme a mensagem de sucesso, que a coluna "Calibragem" mostra o offset calculado, e que o card fecha.
-- Clique "Calibrar" de novo no mesmo sensor e confirme que "Leitura atual" já reflete o offset aplicado (valor deslocado em relação à leitura crua anterior).
+- Não recalibre o mesmo sensor em seguida sem que um novo envio do device tenha chegado: o offset só se reflete na "Leitura atual" depois que o Influx recebe um ponto novo (a ingestão é quem aplica o offset — calibrar não reprocessa a leitura já gravada). O horário exibido ao lado da leitura existe justamente pra deixar essa defasagem visível. Espere o próximo envio do sensor (`interval_seconds`) e só então reabra "Calibrar" pra conferir que a leitura nova já saiu deslocada.
 
 - [ ] **Step 9: Commit**
 
