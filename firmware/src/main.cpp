@@ -1,4 +1,5 @@
 #include <Arduino.h>
+#include <WiFi.h>
 #include <esp_task_wdt.h>
 
 #include "net.h"
@@ -23,6 +24,14 @@ void setup() {
   // Fila de tamanho 1 com overwrite: só o estado mais recente da rede importa pra UI —
   // não faz sentido enfileirar histórico de status de conexão.
   uiEventQueue = xQueueCreate(1, sizeof(net::Event));
+  // WiFi.mode() sobe a pilha lwIP (tcpip_task) de forma síncrona. Sem isso, o
+  // snmp_agent::begin() abaixo (WiFiUDP::begin) roda antes da pilha de rede existir —
+  // crash fatal confirmado em bancada: "assert failed: tcpip_send_msg_wait_sem ...
+  // Invalid mbox", reset em loop, tela nunca chega a acender. net::begin() só cria a
+  // task de rede (roda em paralelo, no core 0) — não dá pra contar com ela já ter
+  // rodado WiFi.begin() nesse ponto.
+  WiFi.mode(WIFI_STA);
+
   net::begin(uiEventQueue);
 
   snmp_agent::begin();
