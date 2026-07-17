@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { deleteSensor, getSensor, listSensors, updateSensor, type SensorUpdate } from '../db/queries.js';
 import { queryLatestReadings, queryReadings } from '../services/influx.js';
+import { calcOffset } from '../services/calibration.js';
 
 export async function sensorsRoutes(app: FastifyInstance): Promise<void> {
   // Sensores nascem via /api/provision. CRUD aqui só lista, atribui cliente/nome/limites e remove.
@@ -42,5 +43,26 @@ export async function sensorsRoutes(app: FastifyInstance): Promise<void> {
       humidity: latest?.humidity ?? null,
       time: latest?.time ?? null,
     };
+  });
+
+  app.post<{ Params: { id: string }; Body: { reference: number } }>('/api/sensors/:id/calibrate', async (req) => {
+    const sensor = await getSensor(Number(req.params.id));
+    if (!sensor) throw Object.assign(new Error('sensor não encontrado'), { statusCode: 404 });
+
+    const reference = req.body?.reference;
+    if (typeof reference !== 'number' || !Number.isFinite(reference)) {
+      throw Object.assign(new Error('reference deve ser um número'), { statusCode: 400 });
+    }
+
+    const latest = (await queryLatestReadings([sensor.id])).get(sensor.id);
+    if (latest?.temperature == null) {
+      throw Object.assign(
+        new Error('sensor sem leitura recente — calibragem exige pelo menos uma leitura'),
+        { statusCode: 400 },
+      );
+    }
+
+    const temp_offset = calcOffset(sensor.temp_offset, reference, latest.temperature);
+    return updateSensor(sensor.id, { temp_offset });
   });
 }
