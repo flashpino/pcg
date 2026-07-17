@@ -65,8 +65,6 @@ export function DashboardPage() {
 
   return (
     <main>
-      <h2>Dashboard</h2>
-
       <div className="kpi-grid">
         <div className="kpi-tile">
           <span className="kpi-label">Clientes ativos</span>

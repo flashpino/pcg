@@ -22,6 +22,7 @@ const TABS = [
 export function App() {
   const [email, setEmail] = useState<string | null | undefined>(undefined); // undefined = carregando
   const [tab, setTab] = useState<(typeof TABS)[number]['id']>('dashboard');
+  const [menuOpen, setMenuOpen] = useState(false);
 
   function checkSession() {
     api
@@ -63,9 +64,29 @@ export function App() {
           <button className="icon-btn" onClick={logout} title="Sair">
             <span className="material-symbols-outlined">logout</span>
           </button>
+          <button className="icon-btn menu-btn" onClick={() => setMenuOpen((v) => !v)} title="Menu">
+            <span className="material-symbols-outlined">menu</span>
+          </button>
         </div>
       </header>
+      <div className={`mobile-nav${menuOpen ? ' open' : ''}`}>
+        {TABS.map((t) => (
+          <button
+            key={t.id}
+            className={tab === t.id ? 'active' : ''}
+            onClick={() => { setTab(t.id); setMenuOpen(false); }}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
       <Active />
+      <footer className="app-footer">
+        <div>
+          <span>© {new Date().getFullYear()} PCG</span>
+          <span>Painel de Monitoramento</span>
+        </div>
+      </footer>
     </>
   );
 }

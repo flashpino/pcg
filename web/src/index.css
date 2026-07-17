@@ -121,9 +121,10 @@ nav.tabs button.active { color: var(--on-surface); border-bottom-color: var(--pr
 .icon-btn:hover { background: var(--surface-container-low); color: var(--on-surface); }
 .icon-btn .material-symbols-outlined { font-size: 1.05rem; }
 main {
-  max-width: 1440px;
+  max-width: 1600px;
   margin: 0 auto;
   padding: 1.5rem;
+  width: 100%;
 }
 h2 {
   font-size: 1.4rem;
@@ -251,10 +252,12 @@ button.danger:hover { background: var(--status-red-bg); border-color: var(--stat
 }
 .kpi-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  grid-template-columns: 1fr;
   gap: 1rem;
   margin-bottom: 2rem;
 }
+@media (min-width: 640px) { .kpi-grid { grid-template-columns: repeat(2, 1fr); } }
+@media (min-width: 1024px) { .kpi-grid { grid-template-columns: repeat(4, 1fr); } }
 .kpi-tile {
   background: var(--surface);
   border: 1px solid var(--outline-variant);
@@ -299,10 +302,13 @@ button.danger:hover { background: var(--status-red-bg); border-color: var(--stat
 .section-title h3 .material-symbols-outlined { color: var(--primary); font-size: 1rem; }
 .device-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  grid-template-columns: 1fr;
   gap: 1rem;
   margin-bottom: 1.5rem;
 }
+@media (min-width: 640px) { .device-grid { grid-template-columns: repeat(2, 1fr); } }
+@media (min-width: 1024px) { .device-grid { grid-template-columns: repeat(3, 1fr); } }
+@media (min-width: 1280px) { .device-grid { grid-template-columns: repeat(4, 1fr); } }
 .device-card {
   background: var(--surface);
   border: 1px solid var(--outline-variant);
@@ -502,6 +508,61 @@ form label > small { display: block; margin-bottom: 0.3rem; color: var(--on-surf
   justify-content: center;
   gap: 0.4rem;
 }
+footer.app-footer {
+  margin-top: auto;
+  border-top: 1px solid var(--outline-variant);
+  background: var(--surface);
+  padding: 0.75rem 1.5rem;
+}
+footer.app-footer div {
+  max-width: 1600px;
+  margin: 0 auto;
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.58rem;
+  color: var(--on-surface-variant);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 700;
+}
+#root { display: flex; flex-direction: column; min-height: 100vh; }
+.menu-btn { display: none; }
+.mobile-nav {
+  display: none;
+  background: var(--surface);
+  border-bottom: 1px solid var(--outline-variant);
+  padding: 1rem 1.5rem;
+  position: sticky;
+  top: 58px;
+  z-index: 40;
+  box-shadow: 0 4px 8px rgba(15, 23, 42, 0.06);
+}
+.mobile-nav button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  border-left: 2px solid transparent;
+  border-radius: 0;
+  color: var(--on-surface-variant);
+  padding: 0.6rem 0.5rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.mobile-nav button.active { color: var(--on-surface); border-left-color: var(--primary); }
+@media (max-width: 767px) {
+  nav.tabs { display: none; }
+  .topbar-right .user-email { display: none; }
+  .menu-btn { display: inline-flex; }
+  .mobile-nav.open { display: block; }
+  main { padding: 1rem; }
+  .two-col { grid-template-columns: 1fr; }
+  table { display: block; overflow-x: auto; white-space: nowrap; }
+}
+
 .login-card-footer {
   background: var(--surface-container-low);
   border-top: 1px solid var(--outline-variant);
