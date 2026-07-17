@@ -248,6 +248,22 @@ static void showDashboard() {
   lv_scr_load(scrDashboard);
 }
 
+// Autoescala do sparkline. Sem isso o range default do LVGL (0..100) deixava todos os
+// pontos (temp*10 ≈ 250, hum*10 ≈ 500) grampeados na borda — gráfico nunca aparecia.
+static void autoscaleChart(lv_obj_t* chart, lv_chart_series_t* series) {
+  lv_coord_t* ys = lv_chart_get_y_array(chart, series);
+  uint16_t n = lv_chart_get_point_count(chart);
+  lv_coord_t mn = 32767, mx = -32768;
+  for (uint16_t i = 0; i < n; i++) {
+    if (ys[i] == LV_CHART_POINT_NONE) continue;
+    if (ys[i] < mn) mn = ys[i];
+    if (ys[i] > mx) mx = ys[i];
+  }
+  if (mn > mx) return;  // série ainda vazia
+  // Margem de ±0.5 (unidade *10) também evita range degenerado quando a leitura é constante.
+  lv_chart_set_range(chart, LV_CHART_AXIS_PRIMARY_Y, mn - 5, mx + 5);
+}
+
 // Chamado a cada net::Event ONLINE com leitura nova — atualiza valores, sparkline e max/min do dia.
 static void updateDashboardReading(float temp, float hum) {
   char buf[16];
@@ -258,6 +274,8 @@ static void updateDashboardReading(float temp, float hum) {
 
   lv_chart_set_next_value(tempChart, tempSeries, (lv_coord_t)(temp * 10));
   lv_chart_set_next_value(humChart, humSeries, (lv_coord_t)(hum * 10));
+  autoscaleChart(tempChart, tempSeries);
+  autoscaleChart(humChart, humSeries);
 
   time_t now = time(nullptr);
   struct tm tmNow;
