@@ -104,6 +104,7 @@ export interface Sensor {
   device_token: string;
   temp_min: number | null;
   temp_max: number | null;
+  temp_offset: number;
   hum_min: number | null;
   hum_max: number | null;
   interval_seconds: number;
@@ -144,6 +145,7 @@ export interface SensorUpdate {
   name?: string;
   temp_min?: number | null;
   temp_max?: number | null;
+  temp_offset?: number;
   hum_min?: number | null;
   hum_max?: number | null;
   interval_seconds?: number;

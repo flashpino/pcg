@@ -26,6 +26,9 @@ CREATE TABLE IF NOT EXISTS sensors (
 );
 -- Texto livre (ex. "câmara fria 2", "sala do servidor") — disponível como {{$local}} nas mensagens.
 ALTER TABLE sensors ADD COLUMN IF NOT EXISTS local TEXT;
+-- Ajuste fixo somado à leitura crua na ingestão, pra compensar erro sistemático do sensor
+-- físico — calculado pelo wizard de calibragem (painel > Sensores), não editado à mão.
+ALTER TABLE sensors ADD COLUMN IF NOT EXISTS temp_offset NUMERIC NOT NULL DEFAULT 0;
 
 CREATE TABLE IF NOT EXISTS contacts (
   id SERIAL PRIMARY KEY,

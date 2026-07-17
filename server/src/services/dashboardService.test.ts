@@ -11,6 +11,7 @@ function sensor(overrides: Partial<Sensor>): Sensor {
     device_token: 't',
     temp_min: null,
     temp_max: null,
+    temp_offset: 0,
     hum_min: null,
     hum_max: null,
     interval_seconds: 60,
