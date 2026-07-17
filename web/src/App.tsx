@@ -46,7 +46,10 @@ export function App() {
     <>
       <header className="topbar">
         <div className="topbar-left">
-          <h1 className="brand">PCG - Monitoramento</h1>
+          <h1 className="brand">
+            <span className="material-symbols-outlined" style={{ color: 'var(--primary)', marginRight: '0.4rem' }}>bolt</span>
+            PCG — Monitoramento
+          </h1>
           <nav className="tabs">
             {TABS.map((t) => (
               <button key={t.id} className={tab === t.id ? 'active' : ''} onClick={() => setTab(t.id)}>
@@ -57,7 +60,9 @@ export function App() {
         </div>
         <div className="topbar-right">
           <span className="user-email">{email}</span>
-          <button className="secondary" onClick={logout}>Sair</button>
+          <button className="secondary" onClick={logout}>
+            <span className="material-symbols-outlined" style={{ fontSize: '0.9rem' }}>logout</span> Sair
+          </button>
         </div>
       </header>
       <Active />

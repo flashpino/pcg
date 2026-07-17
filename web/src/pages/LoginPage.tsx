@@ -18,20 +18,44 @@ export function LoginPage({ onLoggedIn }: { onLoggedIn: () => void }) {
   }
 
   return (
-    <main>
-      <form className="login-box" onSubmit={submit}>
-        <h2>PCG — Login</h2>
-        {error && <p className="error">{error}</p>}
-        <input type="email" placeholder="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
-        <input
-          type="password"
-          placeholder="senha"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          required
-        />
-        <button type="submit">Entrar</button>
-      </form>
+    <main className="login-shell">
+      <div className="login-card">
+        <div className="login-card-header">
+          <span className="material-symbols-outlined">bolt</span>
+          <p>PCG — Monitoramento Industrial</p>
+        </div>
+        <div className="login-card-body">
+          <h2>Acesso Administrativo</h2>
+          <p>Insira suas credenciais para continuar</p>
+          {error && <p className="error">{error}</p>}
+          <form onSubmit={submit}>
+            <div className="login-field">
+              <label>Email</label>
+              <div className="input-icon">
+                <span className="material-symbols-outlined">person</span>
+                <input type="email" placeholder="admin@exemplo.com" value={email} onChange={(e) => setEmail(e.target.value)} required />
+              </div>
+            </div>
+            <div className="login-field">
+              <label>Senha</label>
+              <div className="input-icon">
+                <span className="material-symbols-outlined">lock</span>
+                <input
+                  type="password"
+                  placeholder="••••••••"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                />
+              </div>
+            </div>
+            <button type="submit">
+              <span className="material-symbols-outlined">login</span> Entrar
+            </button>
+          </form>
+        </div>
+        <div className="login-card-footer">PCG — Painel v1.0</div>
+      </div>
     </main>
   );
 }
