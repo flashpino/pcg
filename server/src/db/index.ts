@@ -43,6 +43,7 @@ const DEFAULT_MESSAGE_TEMPLATES: Record<string, { whatsapp: string; voice?: stri
     whatsapp: '⚠️ Alerta de hardware: sensor {{$sensor}} ({{$cliente}} / {{$local}}) sem leitura válida há mais de {{$segundos}}s. Verifique o dispositivo.',
   },
   hardware_resolve: { whatsapp: 'Sensor {{$sensor}} ({{$cliente}} / {{$local}}) voltou a reportar normalmente.' },
+  welcome: { whatsapp: 'Olá {{$nome}}! Você foi cadastrado no monitoramento PCG.' },
 };
 
 // Idempotente (ON CONFLICT DO NOTHING) — não sobrescreve customização já salva pelo admin.
