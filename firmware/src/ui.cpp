@@ -169,11 +169,11 @@ static void buildDashboard() {
   lv_obj_t* tempPanel = lv_obj_create(scrDashboard);
   lv_obj_set_size(tempPanel, SCREEN_W / 2 - 2, SCREEN_H - 32);
   lv_obj_align(tempPanel, LV_ALIGN_BOTTOM_LEFT, 0, 0);
-  lv_obj_set_style_bg_color(tempPanel, lv_color_hex(0xFFF3E0), 0);
+  lv_obj_set_style_bg_color(tempPanel, lv_color_hex(0xFAF5EC), 0);
 
   lv_obj_t* tempLabel = lv_label_create(tempPanel);
   lv_label_set_text(tempLabel, "TEMPERATURA");
-  lv_obj_set_style_text_color(tempLabel, lv_color_hex(0xFB8C00), 0);
+  lv_obj_set_style_text_color(tempLabel, lv_color_hex(0xE08A4E), 0);
   lv_obj_align(tempLabel, LV_ALIGN_TOP_MID, 0, 2);
 
   // ponytail: transform_zoom pra aumentar o número foi tentado e revertido — no LVGL
@@ -195,7 +195,7 @@ static void buildDashboard() {
   lv_obj_set_style_border_width(tempChart, 0, 0);
   lv_obj_set_style_bg_opa(tempChart, LV_OPA_TRANSP, 0);
   lv_obj_set_style_pad_all(tempChart, 0, 0);
-  tempSeries = lv_chart_add_series(tempChart, lv_color_hex(0xFB8C00), LV_CHART_AXIS_PRIMARY_Y);
+  tempSeries = lv_chart_add_series(tempChart, lv_color_hex(0xE08A4E), LV_CHART_AXIS_PRIMARY_Y);
 
   tempMinMaxLabel = lv_label_create(tempPanel);
   lv_label_set_text(tempMinMaxLabel, "max -.- / min -.-");
@@ -204,11 +204,11 @@ static void buildDashboard() {
   lv_obj_t* humPanel = lv_obj_create(scrDashboard);
   lv_obj_set_size(humPanel, SCREEN_W / 2 - 2, SCREEN_H - 32);
   lv_obj_align(humPanel, LV_ALIGN_BOTTOM_RIGHT, 0, 0);
-  lv_obj_set_style_bg_color(humPanel, lv_color_hex(0xE3F2FD), 0);
+  lv_obj_set_style_bg_color(humPanel, lv_color_hex(0xEEF3F8), 0);
 
   lv_obj_t* humLabel = lv_label_create(humPanel);
   lv_label_set_text(humLabel, "UMIDADE");
-  lv_obj_set_style_text_color(humLabel, lv_color_hex(0x1E88E5), 0);
+  lv_obj_set_style_text_color(humLabel, lv_color_hex(0x4E9BD6), 0);
   lv_obj_align(humLabel, LV_ALIGN_TOP_MID, 0, 2);
 
   humValueLabel = lv_label_create(humPanel);
@@ -226,7 +226,7 @@ static void buildDashboard() {
   lv_obj_set_style_border_width(humChart, 0, 0);
   lv_obj_set_style_bg_opa(humChart, LV_OPA_TRANSP, 0);
   lv_obj_set_style_pad_all(humChart, 0, 0);
-  humSeries = lv_chart_add_series(humChart, lv_color_hex(0x1E88E5), LV_CHART_AXIS_PRIMARY_Y);
+  humSeries = lv_chart_add_series(humChart, lv_color_hex(0x4E9BD6), LV_CHART_AXIS_PRIMARY_Y);
 
   humMinMaxLabel = lv_label_create(humPanel);
   lv_label_set_text(humMinMaxLabel, "max -.- / min -.-");
