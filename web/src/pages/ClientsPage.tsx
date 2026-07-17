@@ -83,12 +83,16 @@ export function ClientsPage() {
 
   return (
     <main>
-      <h2>Clientes</h2>
+      <h2>Gestão de Clientes</h2>
       {error && <p className="error">{error}</p>}
-      <form className="inline" onSubmit={create}>
-        <input placeholder="nome do cliente" value={name} onChange={(e) => setName(e.target.value)} required />
-        <button type="submit">Adicionar</button>
-      </form>
+      <div className="card">
+        <h3>Adicionar novo cliente</h3>
+        <form className="inline" onSubmit={create}>
+          <input placeholder="nome do cliente" value={name} onChange={(e) => setName(e.target.value)} required style={{ flex: 1, minWidth: '240px' }} />
+          <button type="submit">Adicionar</button>
+        </form>
+      </div>
+
       <table>
         <thead>
           <tr>
@@ -117,10 +121,14 @@ export function ClientsPage() {
       </table>
 
       {expandedClient && (
-        <div style={{ marginTop: '1rem' }}>
-          <h2>Contatos — {expandedClient.name}</h2>
-          <CredentialsForm client={expandedClient} />
-          <ClientContacts clientId={expandedClient.id} />
+        <div style={{ marginTop: '1.5rem' }}>
+          <div className="two-col">
+            <div className="card" style={{ borderLeft: '4px solid var(--primary)' }}>
+              <h3>Cliente selecionado — {expandedClient.name}</h3>
+              <CredentialsForm client={expandedClient} />
+            </div>
+            <ClientContacts clientId={expandedClient.id} />
+          </div>
         </div>
       )}
     </main>

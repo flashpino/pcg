@@ -15,6 +15,8 @@ const LABELS: Record<string, string> = {
   connectivity_fire: 'Conectividade — disparo',
   connectivity_resolve: 'Conectividade — resolvido',
   connectivity_renotify: 'Conectividade — continua offline',
+  hardware_fire: 'Hardware — disparo (só admins com telefone cadastrado)',
+  hardware_resolve: 'Hardware — resolvido (só admins com telefone cadastrado)',
 };
 
 const LEGEND: Record<string, string[]> = {
@@ -25,6 +27,8 @@ const LEGEND: Record<string, string[]> = {
   connectivity_fire: ['sensor', 'local', 'cliente', 'temperatura', 'min', 'max', 'limite', 'segundos'],
   connectivity_resolve: ['sensor', 'local', 'cliente', 'temperatura', 'min', 'max', 'limite', 'segundos'],
   connectivity_renotify: ['sensor', 'local', 'cliente', 'temperatura', 'min', 'max', 'limite', 'segundos'],
+  hardware_fire: ['sensor', 'local', 'cliente', 'segundos'],
+  hardware_resolve: ['sensor', 'local', 'cliente', 'segundos'],
 };
 
 function TemplateForm({ tpl, onSaved }: { tpl: Template; onSaved: () => void }) {
@@ -47,13 +51,17 @@ function TemplateForm({ tpl, onSaved }: { tpl: Template; onSaved: () => void }) 
 
   return (
     <form className="card" onSubmit={save}>
-      <h3>{LABELS[tpl.key] ?? tpl.key}</h3>
+      <div className="section-title" style={{ justifyContent: 'space-between' }}>
+        <h3 style={{ color: 'var(--on-surface)', fontSize: '1.05rem', textTransform: 'none', letterSpacing: 'normal' }}>
+          {LABELS[tpl.key] ?? tpl.key}
+        </h3>
+        <span className="tpl-badge">whatsapp</span>
+      </div>
       <label>
-        WhatsApp
-        <br />
+        <small>Template da mensagem</small>
         <textarea
+          className="tpl-code"
           rows={2}
-          style={{ width: '100%' }}
           value={whatsapp}
           onChange={(e) => setWhatsapp(e.target.value)}
           required
@@ -61,13 +69,12 @@ function TemplateForm({ tpl, onSaved }: { tpl: Template; onSaved: () => void }) 
       </label>
       {hasVoice && (
         <label>
-          Ligação de voz (só disparo de temperatura)
-          <br />
-          <textarea rows={2} style={{ width: '100%' }} value={voice} onChange={(e) => setVoice(e.target.value)} />
+          <small>Ligação de voz (só disparo de temperatura)</small>
+          <textarea className="tpl-code" rows={2} value={voice} onChange={(e) => setVoice(e.target.value)} />
         </label>
       )}
-      <p>
-        <small>Variáveis disponíveis: {LEGEND[tpl.key]?.map((v) => `{{$${v}}}`).join(', ')}</small>
+      <p className="tpl-vars">
+        Variáveis: {LEGEND[tpl.key]?.map((v) => <code key={v}>{`{{$${v}}}`}</code>)}
       </p>
       <div className="inline">
         <button type="submit">Salvar</button>

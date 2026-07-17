@@ -21,28 +21,9 @@ interface Device {
   reading_time: string | null;
 }
 
-interface Notification {
-  id: number;
-  contact_id: number;
-  channel: string;
-  status: string;
-}
-
-interface Event {
-  id: number;
-  sensor_id: number;
-  type: string;
-  state: 'firing' | 'resolved';
-  message: string;
-  fired_at: string;
-  resolved_at: string | null;
-  notifications: Notification[];
-}
-
 interface DashboardData {
   kpis: Kpis;
   devices: Device[];
-  events: Event[];
 }
 
 // Faixa aproximada dBm -> barras de sinal (4 = ótimo, 0 = péssimo). Sem hardware de referência
@@ -80,7 +61,7 @@ export function DashboardPage() {
   if (error) return <main><p className="error">{error}</p></main>;
   if (!data) return null;
 
-  const { kpis, devices, events } = data;
+  const { kpis, devices } = data;
 
   return (
     <main>
@@ -92,11 +73,11 @@ export function DashboardPage() {
           <span className="kpi-label">Clientes ativos</span>
         </div>
         <div className="kpi-tile">
-          <span className="kpi-value status-online">{kpis.sensorsOnline}</span>
+          <span className="kpi-value">{kpis.sensorsOnline}</span>
           <span className="kpi-label">Sensores online</span>
         </div>
         <div className="kpi-tile">
-          <span className="kpi-value status-offline">{kpis.sensorsOffline}</span>
+          <span className="kpi-value">{kpis.sensorsOffline}</span>
           <span className="kpi-label">Sensores offline</span>
         </div>
         <div className="kpi-tile">
@@ -105,19 +86,31 @@ export function DashboardPage() {
         </div>
       </div>
 
+      <div className="section-title">
+        <h3>Unidades</h3>
+      </div>
       <div className="device-grid">
         {devices.map((d) => (
-          <div className="device-card" key={d.id}>
+          <div className={`device-card${d.online ? '' : ' offline'}`} key={d.id}>
             <div className="device-card-header">
-              <strong>{d.name}</strong>
-              <span className={d.online ? 'status-online' : 'status-offline'}>
-                {d.online ? '● online' : '○ offline'}
+              <div>
+                <strong>{d.name}</strong>
+                <div><small>{d.client_name} — {d.mac}</small></div>
+              </div>
+              <span className={`status-chip ${d.online ? 'online' : 'offline'}`}>
+                <span className="dot" />
+                {d.online ? 'online' : 'offline'}
               </span>
             </div>
-            <small>{d.client_name} — {d.mac}</small>
             <div className="device-card-readings">
-              <span>{d.temperature ?? '—'}°C</span>
-              <span>{d.humidity ?? '—'}%</span>
+              <div>
+                <span className="reading-label">Temperatura</span>
+                <span className="reading-value">{d.temperature ?? '—'}<small>°C</small></span>
+              </div>
+              <div>
+                <span className="reading-label">Humidade</span>
+                <span className="reading-value">{d.humidity ?? '—'}<small>%</small></span>
+              </div>
             </div>
             <div className="device-card-footer">
               <span className="signal-bars" title={d.rssi !== null ? `${d.rssi} dBm` : 'sem leitura'}>
@@ -128,21 +121,6 @@ export function DashboardPage() {
               </span>
               <span>uptime {d.online ? formatUptime(d.online_since) : '—'}</span>
             </div>
-          </div>
-        ))}
-      </div>
-
-      <h2>Eventos recentes</h2>
-      <div className="event-feed">
-        {events.map((e) => (
-          <div className="card" key={e.id}>
-            <strong>
-              [{e.type}] {e.state === 'firing' ? '🔴 firing' : '✅ resolved'}
-            </strong>
-            <p>{e.message}</p>
-            <small>
-              sensor #{e.sensor_id} — {new Date(e.fired_at).toLocaleString('pt-BR')}
-            </small>
           </div>
         ))}
       </div>

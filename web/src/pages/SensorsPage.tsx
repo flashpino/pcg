@@ -99,11 +99,35 @@ export function SensorsPage() {
     return v === '' ? null : Number(v);
   }
 
+  const onlineCount = sensors.filter(isOnline).length;
+  const temps = sensors.map((s) => s.temp_max).filter((v): v is number => v !== null);
+  const avgTempMax = temps.length ? (temps.reduce((a, b) => a + b, 0) / temps.length).toFixed(1) : '—';
+
   return (
     <main>
-      <h2>Sensores</h2>
+      <h2>Sensores em Campo</h2>
       {error && <p className="error">{error}</p>}
       {message && <p className="success">{message}</p>}
+
+      <div className="kpi-grid">
+        <div className="kpi-tile">
+          <span className="kpi-value">{sensors.length}</span>
+          <span className="kpi-label">Total cadastrados</span>
+        </div>
+        <div className="kpi-tile">
+          <span className="kpi-value">{onlineCount}</span>
+          <span className="kpi-label">Online</span>
+        </div>
+        <div className="kpi-tile">
+          <span className="kpi-value">{sensors.length - onlineCount}</span>
+          <span className="kpi-label">Offline</span>
+        </div>
+        <div className="kpi-tile">
+          <span className="kpi-value">{avgTempMax}<small style={{ fontSize: '1.1rem' }}>°C</small></span>
+          <span className="kpi-label">Limite médio de temp.</span>
+        </div>
+      </div>
+
       <table>
         <thead>
           <tr>

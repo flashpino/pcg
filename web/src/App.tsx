@@ -45,18 +45,21 @@ export function App() {
   return (
     <>
       <header className="topbar">
-        <strong>PCG — Monitoramento</strong>
-        <span>
-          {email} — <button className="secondary" onClick={logout}>sair</button>
-        </span>
+        <div className="topbar-left">
+          <h1 className="brand">PCG - Monitoramento</h1>
+          <nav className="tabs">
+            {TABS.map((t) => (
+              <button key={t.id} className={tab === t.id ? 'active' : ''} onClick={() => setTab(t.id)}>
+                {t.label}
+              </button>
+            ))}
+          </nav>
+        </div>
+        <div className="topbar-right">
+          <span className="user-email">{email}</span>
+          <button className="secondary" onClick={logout}>Sair</button>
+        </div>
       </header>
-      <nav className="tabs">
-        {TABS.map((t) => (
-          <button key={t.id} className={tab === t.id ? 'active' : ''} onClick={() => setTab(t.id)}>
-            {t.label}
-          </button>
-        ))}
-      </nav>
       <Active />
     </>
   );
