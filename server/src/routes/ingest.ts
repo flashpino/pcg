@@ -38,7 +38,9 @@ export async function ingestRoutes(app: FastifyInstance): Promise<void> {
       throw Object.assign(new Error('fw obrigatório'), { statusCode: 400 });
     }
 
-    writeReadings(sensor.client_id, sensor.id, readings);
+    const calibrated = readings.map((r) => ({ ...r, temp: r.temp + sensor.temp_offset }));
+
+    writeReadings(sensor.client_id, sensor.id, calibrated);
     try {
       await flushInflux();
     } catch (err) {
@@ -48,7 +50,7 @@ export async function ingestRoutes(app: FastifyInstance): Promise<void> {
     await updateSensor(sensor.id, { last_seen_at: new Date().toISOString(), last_firmware: req.body.fw });
 
     // Reading mais recente = menor ago_ms (o device manda em ordem, mas não assumir sem checar).
-    const latest = readings.reduce((a, b) => (a.ago_ms <= b.ago_ms ? a : b));
+    const latest = calibrated.reduce((a, b) => (a.ago_ms <= b.ago_ms ? a : b));
     await evaluate(sensor, { temp: latest.temp, hum: latest.hum });
 
     const ota = sensor.target_firmware && sensor.target_firmware !== req.body.fw
