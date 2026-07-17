@@ -20,6 +20,7 @@ interface Sensor {
   interval_seconds: number;
   offline_after_seconds: number;
   target_firmware: string | null;
+  last_firmware: string | null;
   last_seen_at: string | null;
 }
 
@@ -113,6 +114,7 @@ export function SensorsPage() {
             <th>Cliente</th>
             <th>Temp min/max</th>
             <th>Hum min/max</th>
+            <th>Firmware atual</th>
             <th>Firmware alvo</th>
             <th />
           </tr>
@@ -179,6 +181,15 @@ export function SensorsPage() {
                   defaultValue={s.hum_max ?? ''}
                   onBlur={(e) => patch(s, { hum_max: numberOrNull(e.target.value) })}
                 />
+              </td>
+              <td>
+                {s.last_firmware ?? '—'}
+                {s.target_firmware && s.last_firmware !== s.target_firmware && (
+                  <span title="Ainda não recebeu a versão alvo — aguarda próximo ingest do device">
+                    {' '}
+                    ⏳
+                  </span>
+                )}
               </td>
               <td>
                 <select

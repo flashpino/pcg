@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { createHash } from 'node:crypto';
 import { createReadStream } from 'node:fs';
-import { mkdir, rm, writeFile } from 'node:fs/promises';
+import { mkdir, rm, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { createFirmware, deleteFirmware, getFirmwareByVersion, getSensorByToken, listFirmwares } from '../db/queries.js';
 
@@ -58,8 +58,14 @@ export async function firmwareRoutes(app: FastifyInstance): Promise<void> {
       }
       const fw = await getFirmwareByVersion(req.params.version);
       if (!fw) throw Object.assign(new Error('firmware não encontrado'), { statusCode: 404 });
+      const filePath = path.join(FIRMWARE_DIR, fw.filename);
+      // HTTPUpdate do ESP32 exige Content-Length pra saber quantos bytes gravar na
+      // partição OTA ("Server Did Not Report Size") — sem isso a resposta cai pra
+      // chunked e o device recusa o download.
+      const { size } = await stat(filePath);
       reply.header('content-type', 'application/octet-stream');
-      return reply.send(createReadStream(path.join(FIRMWARE_DIR, fw.filename)));
+      reply.header('content-length', size);
+      return reply.send(createReadStream(filePath));
     },
   );
 }
