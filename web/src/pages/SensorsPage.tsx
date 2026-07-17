@@ -15,6 +15,7 @@ interface Sensor {
   local: string | null;
   temp_min: number | null;
   temp_max: number | null;
+  temp_offset: number;
   hum_min: number | null;
   hum_max: number | null;
   interval_seconds: number;
@@ -34,6 +35,12 @@ interface Firmware {
   version: string;
 }
 
+interface LatestReading {
+  temperature: number | null;
+  humidity: number | null;
+  time: string | null;
+}
+
 function isOnline(sensor: Sensor): boolean {
   if (!sensor.last_seen_at) return false;
   return Date.now() - new Date(sensor.last_seen_at).getTime() < sensor.offline_after_seconds * 1000;
@@ -47,6 +54,9 @@ export function SensorsPage() {
   const [message, setMessage] = useState<string | null>(null);
   const [selected, setSelected] = useState<number | null>(null);
   const [readings, setReadings] = useState<ReadingPoint[]>([]);
+  const [calibrating, setCalibrating] = useState<number | null>(null);
+  const [calibLatest, setCalibLatest] = useState<LatestReading | null>(null);
+  const [calibReference, setCalibReference] = useState('');
 
   function load() {
     api.get<Sensor[]>('/api/sensors').then(setSensors).catch((err) => setError(err.message));
@@ -63,6 +73,16 @@ export function SensorsPage() {
       .then(setReadings)
       .catch((err) => setError(err.message));
   }, [selected]);
+
+  useEffect(() => {
+    if (calibrating === null) return;
+    setCalibLatest(null);
+    setCalibReference('');
+    api
+      .get<LatestReading>(`/api/sensors/${calibrating}/latest`)
+      .then(setCalibLatest)
+      .catch((err) => setError(err.message));
+  }, [calibrating]);
 
   // Toda mutação passa por aqui — sem isso, uma falha na requisição (auth expirada,
   // rede) ficava muda: nada na tela indicava se o clique funcionou ou não.
@@ -93,6 +113,21 @@ export function SensorsPage() {
       () => Promise.all(siblings.map((s) => api.patch(`/api/sensors/${s.id}`, { target_firmware: version }))),
       `Firmware ${version ?? '(latest)'} aplicado a ${siblings.length} sensor(es).`,
     );
+  }
+
+  async function applyCalibration(sensor: Sensor) {
+    setError(null);
+    setMessage(null);
+    try {
+      const updated = await api.post<Sensor>(`/api/sensors/${sensor.id}/calibrate`, {
+        reference: Number(calibReference),
+      });
+      setMessage(`Offset ajustado para ${updated.temp_offset}°C.`);
+      setCalibrating(null);
+      load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'falha ao calibrar');
+    }
   }
 
   function numberOrNull(v: string): number | null {
@@ -138,6 +173,7 @@ export function SensorsPage() {
             <th>Cliente</th>
             <th>Temp min/max</th>
             <th>Hum min/max</th>
+            <th>Calibragem</th>
             <th>Firmware atual</th>
             <th>Firmware alvo</th>
             <th />
@@ -207,6 +243,18 @@ export function SensorsPage() {
                 />
               </td>
               <td>
+                {s.temp_offset ? `${s.temp_offset > 0 ? '+' : ''}${s.temp_offset}°C` : '—'}{' '}
+                <button
+                  className="secondary"
+                  onClick={() => {
+                    setCalibrating(s.id);
+                    setSelected(null);
+                  }}
+                >
+                  Calibrar
+                </button>
+              </td>
+              <td>
                 {s.last_firmware ?? '—'}
                 {s.target_firmware && s.last_firmware !== s.target_firmware && (
                   <span title="Ainda não recebeu a versão alvo — aguarda próximo ingest do device">
@@ -238,7 +286,13 @@ export function SensorsPage() {
                 )}
               </td>
               <td>
-                <button className="secondary" onClick={() => setSelected(s.id)}>
+                <button
+                  className="secondary"
+                  onClick={() => {
+                    setSelected(s.id);
+                    setCalibrating(null);
+                  }}
+                >
                   Gráfico
                 </button>{' '}
                 <button className="danger" onClick={() => remove(s)}>
@@ -263,6 +317,39 @@ export function SensorsPage() {
               <Line type="monotone" dataKey="humidity" stroke="#3b82f6" dot={false} name="Umidade %" />
             </LineChart>
           </ResponsiveContainer>
+        </div>
+      )}
+
+      {calibrating !== null && (
+        <div className="card" style={{ marginTop: '1rem' }}>
+          <h3>Calibrar — {sensors.find((s) => s.id === calibrating)?.name}</h3>
+          {calibLatest === null ? (
+            <p>Carregando leitura atual…</p>
+          ) : calibLatest.temperature === null ? (
+            <p className="error">Sensor sem leitura recente — aguarde o próximo envio.</p>
+          ) : (
+            <>
+              <p>Leitura atual: {calibLatest.temperature}°C</p>
+              <label>
+                Temperatura real (termômetro de referência):{' '}
+                <input
+                  type="number"
+                  step="0.1"
+                  value={calibReference}
+                  onChange={(e) => setCalibReference(e.target.value)}
+                />
+              </label>{' '}
+              <button
+                disabled={calibReference === '' || Number.isNaN(Number(calibReference))}
+                onClick={() => applyCalibration(sensors.find((s) => s.id === calibrating)!)}
+              >
+                Aplicar
+              </button>{' '}
+            </>
+          )}
+          <button className="secondary" onClick={() => setCalibrating(null)}>
+            Cancelar
+          </button>
         </div>
       )}
     </main>
