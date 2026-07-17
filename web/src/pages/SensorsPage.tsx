@@ -329,7 +329,10 @@ export function SensorsPage() {
             <p className="error">Sensor sem leitura recente — aguarde o próximo envio.</p>
           ) : (
             <>
-              <p>Leitura atual: {calibLatest.temperature}°C</p>
+              <p>
+                Leitura atual: {calibLatest.temperature}°C
+                {calibLatest.time && ` (${new Date(calibLatest.time).toLocaleString('pt-BR')})`}
+              </p>
               <label>
                 Temperatura real (termômetro de referência):{' '}
                 <input

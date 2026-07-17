@@ -62,7 +62,7 @@ export async function sensorsRoutes(app: FastifyInstance): Promise<void> {
       );
     }
 
-    const temp_offset = calcOffset(sensor.temp_offset, reference, latest.temperature);
+    const temp_offset = Math.round(calcOffset(sensor.temp_offset, reference, latest.temperature) * 10) / 10;
     return updateSensor(sensor.id, { temp_offset });
   });
 }
