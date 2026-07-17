@@ -35,6 +35,22 @@ export const createUserRecord = (email: string, passwordHash: string, phone: str
     )
     .then((r) => r.rows[0]);
 
+export interface UserUpdate {
+  email?: string;
+  phone?: string | null;
+  password_hash?: string;
+}
+
+export const updateUser = (id: number, patch: UserUpdate) => {
+  const cols = Object.keys(patch);
+  if (cols.length === 0) return listUsers().then((rows) => rows.find((u) => u.id === id));
+  const set = cols.map((c, i) => `${c} = $${i + 2}`).join(', ');
+  const values = cols.map((c) => patch[c as keyof UserUpdate]);
+  return pool
+    .query<AdminSummary>(`UPDATE users SET ${set} WHERE id = $1 RETURNING id, email, phone`, [id, ...values])
+    .then((r) => r.rows[0]);
+};
+
 export const deleteUser = (id: number) =>
   pool.query('DELETE FROM users WHERE id = $1', [id]).then((r) => r.rowCount! > 0);
 
