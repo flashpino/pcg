@@ -21,4 +21,8 @@ describe('renderTemplate', () => {
   it('aceita a variável sem o $ também', () => {
     expect(renderTemplate('{{cliente}}', { cliente: 'Acme' })).toBe('Acme');
   });
+
+  it('tolera espaço em branco dentro das chaves', () => {
+    expect(renderTemplate('{{$temperature }}', { temperature: 25.5 })).toBe('25.5');
+  });
 });

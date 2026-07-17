@@ -15,6 +15,7 @@ import {
   type ContactAlertPref,
   type ContactInput,
 } from '../db/queries.js';
+import { queryLatestReadings } from '../services/influx.js';
 import { renderTemplate } from '../services/messageTemplates.js';
 import { enqueueVoice, enqueueWhatsapp } from '../services/notifier.js';
 
@@ -96,6 +97,7 @@ export async function contactsRoutes(app: FastifyInstance): Promise<void> {
     // quebra a expansão de env vars na UI dele antes mesmo do container subir.
     const tpl = await getMessageTemplate('welcome');
     const client = await getClient(contact.client_id);
+    const latest = (await queryLatestReadings([sensor.id])).get(sensor.id);
     const text = tpl
       ? renderTemplate(tpl.whatsapp, {
           nome: contact.name,
@@ -103,6 +105,7 @@ export async function contactsRoutes(app: FastifyInstance): Promise<void> {
           cliente: client?.name ?? '',
           sensor: sensor.name,
           local: sensor.local ?? '',
+          temperatura: latest?.temperature ?? '',
         })
       : (process.env.WELCOME_TEMPLATE ?? 'Olá %name%! Você foi cadastrado no monitoramento PCG.').replace('%name%', contact.name);
     const notification = await createNotification(alert.id, contact.id, 'whatsapp', 'queued', 'welcome');
