@@ -107,4 +107,16 @@ void saveTouchCalibration(const TouchCalibration& cal) {
   prefs.putUShort("touch_y_max", cal.yMax);
 }
 
+float loadTempOffset() {
+  return prefs.getFloat("temp_offset", 0.0f);
+}
+
+void saveTempOffset(float offset) {
+  prefs.putFloat("temp_offset", offset);
+}
+
+void factoryReset() {
+  prefs.clear();
+}
+
 }  // namespace storage

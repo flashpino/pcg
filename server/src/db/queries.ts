@@ -166,8 +166,28 @@ export const updateSensor = (id: number, patch: SensorUpdate) => {
     .then((r) => r.rows[0]);
 };
 
-export const deleteSensor = (id: number) =>
-  pool.query('DELETE FROM sensors WHERE id = $1', [id]).then((r) => r.rowCount! > 0);
+// Apaga em cascata os filhos (notifications -> alerts) antes do sensor, numa transação —
+// as FKs alerts.sensor_id / notifications.alert_id não têm ON DELETE CASCADE, então sem isso
+// o DELETE do sensor viola a constraint. Tudo ou nada: se algo falhar, rollback.
+export const deleteSensor = async (id: number): Promise<boolean> => {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query(
+      'DELETE FROM notifications WHERE alert_id IN (SELECT id FROM alerts WHERE sensor_id = $1)',
+      [id],
+    );
+    await client.query('DELETE FROM alerts WHERE sensor_id = $1', [id]);
+    const r = await client.query('DELETE FROM sensors WHERE id = $1', [id]);
+    await client.query('COMMIT');
+    return r.rowCount! > 0;
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
+};
 
 export interface Contact {
   id: number;
@@ -281,7 +301,7 @@ export const upsertContactAlertPref = (
 export interface Alert {
   id: number;
   sensor_id: number;
-  type: 'temperature' | 'humidity' | 'connectivity' | 'test';
+  type: 'temperature' | 'humidity' | 'connectivity' | 'test' | 'reboot';
   state: 'firing' | 'resolved';
   value: number | null;
   message: string;

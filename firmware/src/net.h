@@ -28,4 +28,9 @@ struct Event {
 // se a fila estiver cheia, o evento mais antigo é descartado, a UI não pode travar a rede).
 void begin(QueueHandle_t uiQueue);
 
+// A UI (core 1) chama com true antes de WiFi.scanNetworks() e false depois — sem isso a
+// task de rede (core 0) chama WiFi.begin() no ciclo seguinte com a credencial salva e
+// briga pelo rádio bem no meio do scan (WIFI_SCAN_FAILED ou 0 redes encontradas).
+void pauseForScan(bool pause);
+
 }  // namespace net

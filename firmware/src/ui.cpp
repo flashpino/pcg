@@ -6,6 +6,7 @@
 #include <SPI.h>
 #include <TFT_eSPI.h>
 #include <WiFi.h>
+#include <esp_task_wdt.h>
 #include <XPT2046_Touchscreen.h>
 #include <lvgl.h>
 #include <string.h>
@@ -272,9 +273,9 @@ static void updateDashboardReading(float temp, float hum) {
   snprintf(buf, sizeof(buf), "%.0f", hum);
   lv_label_set_text(humValueLabel, buf);
 
-  // Sparkline agregado: 1 ponto = média de 5 min, então a janela de 50 pontos cobre ~4h —
-  // e não "tempo real" de ~1 ponto/leitura. A 1ª leitura entra direto pra tela não ficar vazia.
-  static constexpr uint32_t CHART_POINT_MS = 5UL * 60UL * 1000UL;
+  // Sparkline agregado: 1 ponto = média de 1 min, então a janela de 50 pontos cobre ~50 min.
+  // A 1ª leitura entra direto pra tela não ficar vazia.
+  static constexpr uint32_t CHART_POINT_MS = 60UL * 1000UL;
   static uint32_t chartWindowStart = 0;
   static float accTemp = 0, accHum = 0;
   static uint16_t accCount = 0;
@@ -430,7 +431,21 @@ static void onMenuCalibrate(lv_event_t* e) {
   showCalibration();
 }
 
+static void onMenuOffset(lv_event_t* e) {
+  char buf[16];
+  snprintf(buf, sizeof(buf), "%.1f", storage::loadTempOffset());
+  showTextInput("Offset temp (C)", buf, [](const String& value) {
+    storage::saveTempOffset(value.toFloat());
+    showMenu();
+  });
+}
+
 static void onMenuRestart(lv_event_t* e) {
+  ESP.restart();
+}
+
+static void onMenuFactoryReset(lv_event_t* e) {
+  storage::factoryReset();
   ESP.restart();
 }
 
@@ -447,7 +462,9 @@ static void buildMenu() {
   lv_obj_add_event_cb(lv_list_add_btn(list, LV_SYMBOL_SETTINGS, "Configurar IP"), onMenuIp, LV_EVENT_CLICKED, nullptr);
   lv_obj_add_event_cb(lv_list_add_btn(list, LV_SYMBOL_KEYBOARD, "Trocar PIN"), onMenuChangePin, LV_EVENT_CLICKED, nullptr);
   lv_obj_add_event_cb(lv_list_add_btn(list, LV_SYMBOL_EYE_OPEN, "Calibrar touch"), onMenuCalibrate, LV_EVENT_CLICKED, nullptr);
+  lv_obj_add_event_cb(lv_list_add_btn(list, LV_SYMBOL_SETTINGS, "Offset temperatura"), onMenuOffset, LV_EVENT_CLICKED, nullptr);
   lv_obj_add_event_cb(lv_list_add_btn(list, LV_SYMBOL_REFRESH, "Reiniciar"), onMenuRestart, LV_EVENT_CLICKED, nullptr);
+  lv_obj_add_event_cb(lv_list_add_btn(list, LV_SYMBOL_WARNING, "Reset de fabrica"), onMenuFactoryReset, LV_EVENT_CLICKED, nullptr);
 }
 
 static void showMenu() {
@@ -458,6 +475,7 @@ static void showMenu() {
 // GOTCHA: WiFi.scanNetworks() bloqueia ~2s — usar scanNetworks(true) (assíncrono) e
 // preencher a lista quando o resultado ficar pronto (checado em ui::tick()).
 static void onWifiBack(lv_event_t* e) {
+  net::pauseForScan(false);
   showMenu();
 }
 
@@ -483,24 +501,34 @@ static void buildWifiListScreen() {
 static void showWifiList() {
   lv_obj_clean(wifiListWidget);
   lv_list_add_text(wifiListWidget, "escaneando...");
-  WiFi.scanNetworks(true);
-  wifiScanInProgress = true;
   lv_scr_load(scrWifiList);
-}
+  lv_refr_now(NULL);  // pinta "escaneando..." antes do scan bloqueante abaixo
 
-static void pollWifiScan() {
-  if (!wifiScanInProgress) return;
-  int16_t n = WiFi.scanComplete();
-  if (n == WIFI_SCAN_RUNNING || n == WIFI_SCAN_FAILED) return;
+  // Scan SÍNCRONO + show_hidden — exatamente o caminho do firmware antigo (precog_cyd.ino)
+  // que acha as redes nesta mesma placa. O caminho async + WiFi.disconnect() + retry
+  // disparava WIFI_SCAN_FAILED e voltava n=0 (nenhuma rede). pauseForScan mantém a task de
+  // rede longe do rádio durante o scan (relevante quando já há credencial salva).
+  net::pauseForScan(true);
+  esp_task_wdt_reset();
+  int16_t n = WiFi.scanNetworks(false, true);
+  esp_task_wdt_reset();
+  Serial.printf("[wifi-scan] n=%d mode=%d status=%d\n", n, WiFi.getMode(), WiFi.status());
+  net::pauseForScan(false);
 
-  wifiScanInProgress = false;
   lv_obj_clean(wifiListWidget);
-  for (int16_t i = 0; i < n; i++) {
-    lv_obj_t* btn = lv_list_add_btn(wifiListWidget, LV_SYMBOL_WIFI, WiFi.SSID(i).c_str());
-    lv_obj_add_event_cb(btn, onWifiNetworkClicked, LV_EVENT_CLICKED, nullptr);
+  if (n <= 0) {
+    lv_list_add_text(wifiListWidget, "nenhuma rede encontrada");
+  } else {
+    for (int16_t i = 0; i < n; i++) {
+      lv_obj_t* btn = lv_list_add_btn(wifiListWidget, LV_SYMBOL_WIFI, WiFi.SSID(i).c_str());
+      lv_obj_add_event_cb(btn, onWifiNetworkClicked, LV_EVENT_CLICKED, nullptr);
+    }
   }
   WiFi.scanDelete();
 }
+
+// ponytail: scan agora é síncrono em showWifiList() — nada a fazer no tick().
+static void pollWifiScan() {}
 
 // --- Tela de texto genérica (senha wifi / nome / pin) -------------------------------------
 static void onTextInputCancel(lv_event_t* e) {

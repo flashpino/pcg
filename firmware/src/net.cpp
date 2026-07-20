@@ -9,6 +9,7 @@
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
 #include <esp_task_wdt.h>
+#include <esp_system.h>
 #include <time.h>
 
 namespace net {
@@ -73,16 +74,22 @@ static bool readDht(float& temp, float& hum) {
     if (n < 3) delay(2500);
   }
   if (n < 3) return false;
-  temp = median3(temps[0], temps[1], temps[2]);
+  temp = median3(temps[0], temps[1], temps[2]) + storage::loadTempOffset();
   hum = median3(hums[0], hums[1], hums[2]);
   return true;
 }
 
 // --- WiFi ------------------------------------------------------------------------------------
 static uint8_t consecutiveFailures = 0;
+static volatile bool scanPaused = false;
+
+void pauseForScan(bool pause) {
+  scanPaused = pause;
+}
 
 static bool ensureConnected() {
   if (WiFi.status() == WL_CONNECTED) return true;
+  if (scanPaused) return false;  // UI escaneando — não disputa o rádio com WiFi.begin()
 
   storage::WifiCredentials creds = storage::loadWifiCredentials();
   if (creds.ssid.isEmpty()) return false;  // sem credencial — Task 13 abre o scan na tela
@@ -176,6 +183,21 @@ static void runOta(const String& url) {
   // HTTP_UPDATE_OK reinicia o device sozinho (comportamento padrão da lib).
 }
 
+// Motivo do reset atual (constante durante todo o boot) — visibilidade remota de reboots
+// que não são queda de energia (watchdog, panic, brownout), sem precisar de USB no device.
+static const char* resetReasonStr() {
+  switch (esp_reset_reason()) {
+    case ESP_RST_POWERON: return "poweron";
+    case ESP_RST_SW: return "sw_restart";
+    case ESP_RST_PANIC: return "panic";
+    case ESP_RST_INT_WDT: return "watchdog_interrupt";
+    case ESP_RST_TASK_WDT: return "watchdog_task";
+    case ESP_RST_WDT: return "watchdog_other";
+    case ESP_RST_BROWNOUT: return "brownout";
+    default: return "outro";
+  }
+}
+
 // --- Ingest ------------------------------------------------------------------------------------
 struct IngestResult {
   bool ok;
@@ -203,6 +225,7 @@ static IngestResult sendIngest(const Reading* batch, size_t count) {
   }
   doc["fw"] = FW_VERSION;
   doc["device_name"] = storage::loadDeviceName();
+  doc["reset_reason"] = resetReasonStr();
 
   String body;
   serializeJson(doc, body);
@@ -237,6 +260,12 @@ static void publish(QueueHandle_t uiQueue, Status status, bool hasReading, bool 
 // readDht) — sensor realmente travado, não um glitch isolado que a mediana já filtra.
 static const uint8_t SENSOR_STALE_STREAK = 3;
 
+// ponytail: DHT22 às vezes trava retornando sempre o último valor latched (não dá NaN, passa
+// no isnan — a leitura "parece" válida). Em campo, sem acesso físico ao device, a única forma
+// de tentar destravar é reiniciar. 30min com valor idêntico é tempo suficiente pra ambientes
+// refrigerados estáveis não disparar restart à toa, mas curto o bastante pra recuperar rápido.
+static const uint32_t STUCK_RESTART_MS = 30 * 60 * 1000;
+
 static void task(void* pvParameters) {
   QueueHandle_t uiQueue = static_cast<QueueHandle_t>(pvParameters);
   esp_task_wdt_add(NULL);
@@ -245,43 +274,54 @@ static void task(void* pvParameters) {
   bool provisioned = storage::hasDeviceToken();
   uint32_t lastSendMs = 0;  // primeiro envio acontece ~60s depois do boot, igual antes
   uint8_t sensorFailStreak = 0;
+  float stuckTemp = NAN, stuckHum = NAN;
+  uint32_t stuckSinceMs = 0;
 
   for (;;) {
     esp_task_wdt_reset();
 
-    if (!ensureConnected()) {
-      publish(uiQueue, Status::OFFLINE, false, false, 0, 0, 0);
-      // Sem isso, "sem credencial WiFi" vira busy-loop lendo o NVS sem parar
-      // (ensureConnected retorna na hora, sem esperar nada, enquanto o usuário
-      // configura a rede pela tela — visto martelando o NVS a ~8ms/iteração em bancada).
-      vTaskDelay(pdMS_TO_TICKS(500));
-      continue;
-    }
-
-    if (!provisioned) {
-      publish(uiQueue, Status::PROVISIONING, false, false, 0, 0, 0);
-      String token;
-      if (provision(token)) {
-        storage::saveDeviceToken(token);
-        provisioned = true;
-      } else {
-        publish(uiQueue, Status::PROVISION_FAILED, false, false, 0, 0, 0);
-        // Mesmo bug do backoff de WiFi: 30s bloqueados sem esp_task_wdt_reset() no
-        // meio bate exatamente no timeout do watchdog (30s) e reinicia o device.
-        for (uint32_t waited = 0; waited < 30000; waited += 250) {
-          esp_task_wdt_reset();
-          delay(250);
-        }
-        continue;
-      }
-    }
-
+    // Leitura do DHT SEMPRE no topo do loop — a tela mostra temp/umidade independente de
+    // rede ou provisionamento (requisito: funciona normal mesmo sem internet). Provisionar e
+    // enviar são efeitos à parte que NUNCA podem impedir a leitura de aparecer na tela.
+    // readDht() já bloqueia ~7,5s (3 amostras) resetando o WDT, então ele também é o "ritmo"
+    // do loop — sem precisar de delays extras nos caminhos de erro.
     float temp = NAN, hum = NAN;
     bool hasReading = readDht(temp, hum);
     sensorFailStreak = hasReading ? 0 : min<uint16_t>(sensorFailStreak + 1, 255);
     bool sensorStale = sensorFailStreak >= SENSOR_STALE_STREAK;
     if (hasReading) {
       ringPush(Reading{temp, hum, static_cast<int16_t>(WiFi.RSSI()), millis()});
+
+      if (temp == stuckTemp && hum == stuckHum) {
+        if (millis() - stuckSinceMs >= STUCK_RESTART_MS) ESP.restart();
+      } else {
+        stuckTemp = temp;
+        stuckHum = hum;
+        stuckSinceMs = millis();
+      }
+    }
+
+    bool connected = ensureConnected();
+    int16_t rssi = connected ? static_cast<int16_t>(WiFi.RSSI()) : 0;
+
+    if (!connected) {
+      publish(uiQueue, Status::OFFLINE, hasReading, sensorStale, temp, hum, rssi);
+      vTaskDelay(pdMS_TO_TICKS(READ_INTERVAL_MS));
+      continue;
+    }
+
+    if (!provisioned) {
+      String token;
+      if (provision(token)) {
+        storage::saveDeviceToken(token);
+        provisioned = true;
+      } else {
+        // MAC já cadastrado (404) → admin deleta o sensor no painel e ele reprovisiona.
+        // Segue mostrando a leitura na tela — não some com temp/umidade por causa disso.
+        publish(uiQueue, Status::PROVISION_FAILED, hasReading, sensorStale, temp, hum, rssi);
+        vTaskDelay(pdMS_TO_TICKS(READ_INTERVAL_MS));
+        continue;
+      }
     }
 
     if (millis() - lastSendMs >= SEND_INTERVAL_MS) {
@@ -300,7 +340,7 @@ static void task(void* pvParameters) {
       }
     }
 
-    publish(uiQueue, Status::ONLINE, hasReading, sensorStale, temp, hum, static_cast<int16_t>(WiFi.RSSI()));
+    publish(uiQueue, Status::ONLINE, hasReading, sensorStale, temp, hum, rssi);
     vTaskDelay(pdMS_TO_TICKS(READ_INTERVAL_MS));
   }
 }

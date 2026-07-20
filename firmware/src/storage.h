@@ -46,4 +46,13 @@ bool hasTouchCalibration();
 TouchCalibration loadTouchCalibration();
 void saveTouchCalibration(const TouchCalibration& cal);
 
+// Offset local de temperatura, somado à leitura crua do DHT22 antes de exibir e de enviar
+// ao servidor (ajuste manual direto no menu do device, sem depender de rede/dashboard).
+float loadTempOffset();
+void saveTempOffset(float offset);
+
+// Apaga toda a NVS do device (wifi, token, nome, PIN, calibração de touch, offset) — não
+// reinicia sozinho, quem chama decide quando (Task 13 chama ESP.restart() em seguida).
+void factoryReset();
+
 }  // namespace storage

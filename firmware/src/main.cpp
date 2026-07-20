@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include <WiFi.h>
 #include <esp_task_wdt.h>
+#include "esp_bt.h"
 
 #include "net.h"
 #include "zabbix_snmp.h"
@@ -14,6 +15,13 @@ static const uint32_t WDT_TIMEOUT_S = 30;
 static QueueHandle_t uiEventQueue;
 
 void setup() {
+  // GOTCHA achado comparando com o firmware antigo (que via as redes normalmente na mesma
+  // placa): sem isso, o controlador BT do ESP32 fica de pé disputando o mesmo rádio
+  // 2.4GHz do WiFi, mesmo sem nenhuma lib de BT em uso — scanNetworks() completa mas
+  // sempre retorna 0 redes. Precisa ser a primeiríssima coisa no boot.
+  esp_bt_controller_disable();
+  esp_bt_mem_release(ESP_BT_MODE_BTDM);
+
   Serial.begin(115200);
 
   esp_task_wdt_init(WDT_TIMEOUT_S, true);
