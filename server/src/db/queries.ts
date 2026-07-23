@@ -499,3 +499,13 @@ export const updateMessageTemplate = (key: string, whatsapp: string, voice: stri
       voice,
     ])
     .then((r) => r.rows[0]);
+
+export const getSetting = (key: string) =>
+  pool
+    .query<{ value: string }>('SELECT value FROM app_settings WHERE key = $1', [key])
+    .then((r) => r.rows[0]?.value ?? null);
+
+export const setSetting = (key: string, value: string) =>
+  pool
+    .query('INSERT INTO app_settings (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = $2', [key, value])
+    .then(() => undefined);

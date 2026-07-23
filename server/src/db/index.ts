@@ -61,3 +61,14 @@ export async function seedMessageTemplates(): Promise<void> {
     );
   }
 }
+
+// Defaults do agendamento do teste automático — idempotente, não sobrescreve o que o admin salvou.
+export async function seedSettings(): Promise<void> {
+  const defaults: Record<string, string> = { test_schedule_dow: '1', test_schedule_time: '09:00' };
+  for (const [key, value] of Object.entries(defaults)) {
+    await pool.query(
+      'INSERT INTO app_settings (key, value) VALUES ($1, $2) ON CONFLICT (key) DO NOTHING',
+      [key, value],
+    );
+  }
+}

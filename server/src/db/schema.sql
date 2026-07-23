@@ -130,3 +130,9 @@ CREATE TABLE IF NOT EXISTS message_templates (
   whatsapp TEXT NOT NULL,
   voice TEXT
 );
+
+-- Configurações globais chave-valor (ex. agendamento do teste automático).
+CREATE TABLE IF NOT EXISTS app_settings (
+  key TEXT PRIMARY KEY,
+  value TEXT
+);
