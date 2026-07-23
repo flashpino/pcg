@@ -32,6 +32,10 @@ ALTER TABLE sensors ADD COLUMN IF NOT EXISTS temp_offset NUMERIC NOT NULL DEFAUL
 -- Último reset_reason já notificado (ver ingest.ts) — evita reenviar o alerta de reboot a
 -- cada ingest, já que o motivo fica constante durante todo o boot atual do device.
 ALTER TABLE sensors ADD COLUMN IF NOT EXISTS last_reset_reason TEXT;
+-- Agendamento do teste automático deste sensor (dow '0'-'6', time 'HH:MM'); NULL = usa o
+-- padrão global em app_settings (test_schedule_dow/test_schedule_time).
+ALTER TABLE sensors ADD COLUMN IF NOT EXISTS test_schedule_dow TEXT;
+ALTER TABLE sensors ADD COLUMN IF NOT EXISTS test_schedule_time TEXT;
 
 CREATE TABLE IF NOT EXISTS contacts (
   id SERIAL PRIMARY KEY,

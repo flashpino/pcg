@@ -1,7 +1,9 @@
 import type { FastifyInstance } from 'fastify';
 import { getSetting, setSetting } from '../db/queries.js';
-import { scheduleWeeklyTest } from '../services/notifier.js';
 
+// Padrão global do teste automático — só vale pra sensores sem test_schedule_dow/time
+// próprio (ver runScheduledTests em notifier.ts). O cron em si roda a cada minuto e
+// compara o agendamento efetivo de cada sensor, então não há mais nada pra reagendar aqui.
 export async function settingsRoutes(app: FastifyInstance): Promise<void> {
   app.get('/api/settings/test-schedule', async () => ({
     dow: (await getSetting('test_schedule_dow')) ?? '1',
@@ -15,7 +17,6 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
     }
     await setSetting('test_schedule_dow', String(dow));
     await setSetting('test_schedule_time', String(time));
-    await scheduleWeeklyTest(String(dow), String(time)); // reprograma o cron em runtime
     return { ok: true };
   });
 }

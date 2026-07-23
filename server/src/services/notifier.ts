@@ -13,15 +13,22 @@ const VOICE_QUEUE = 'notify-voice';
 const WEEKLY_TEST_QUEUE = 'weekly-test';
 const QUEUE_OPTS = { retryLimit: 5, retryBackoff: true, expireInSeconds: 120 };
 
-// 'HH:MM' + dia da semana (0-6) -> cron 'MM HH * * DOW'. A UI já valida os formatos.
-export function buildTestCron(dow: string, time: string): string {
-  const [hh, mm] = time.split(':');
-  return `${Number(mm)} ${Number(hh)} * * ${Number(dow)}`;
-}
+const WEEKDAY_TO_DOW: Record<string, string> = { Sun: '0', Mon: '1', Tue: '2', Wed: '3', Thu: '4', Fri: '5', Sat: '6' };
 
-export async function scheduleWeeklyTest(dow: string, time: string): Promise<void> {
-  // pg-boss faz upsert pelo nome da fila — chamar de novo reprograma o cron em runtime.
-  await getBoss().schedule(WEEKLY_TEST_QUEUE, buildTestCron(dow, time), {}, { tz: 'America/Sao_Paulo' });
+// Dia da semana ('0'-'6') e hora ('HH:MM') atuais em America/Sao_Paulo — mesmo formato salvo
+// pelo agendamento (global ou por sensor), pra comparar a cada tick do minuto.
+export function spNow(date: Date): { dow: string; time: string } {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Sao_Paulo',
+    weekday: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).formatToParts(date);
+  const get = (type: string) => parts.find((p) => p.type === type)?.value ?? '';
+  let hour = get('hour');
+  if (hour === '24') hour = '00'; // Intl com hour12:false pode devolver "24" à meia-noite
+  return { dow: WEEKDAY_TO_DOW[get('weekday')] ?? '1', time: `${hour}:${get('minute')}` };
 }
 
 // Lazy: o construtor do PgBoss lança erro síncrono sem DATABASE_URL — instanciar no module
@@ -79,12 +86,19 @@ async function runJob(job: NotifyJob, send: (job: NotifyJob) => Promise<void>): 
   }
 }
 
-// Antes era um resumo online/offline por cliente; agora envia a temperatura atual de cada
-// sensor (uma msg por sensor), reusando sendTest — mesmo texto/pipeline do botão manual.
-async function runWeeklyTest(): Promise<void> {
+// Roda a cada minuto (ver startNotifier); cada sensor tem seu próprio dow/time (ou herda o
+// padrão global de app_settings quando NULL) — só dispara sendTest nos sensores cujo horário
+// bate com o agora, em vez de um cron único disparando todos de uma vez.
+async function runScheduledTests(): Promise<void> {
+  const { dow, time } = spNow(new Date());
+  const defaultDow = (await getSetting('test_schedule_dow')) ?? '1';
+  const defaultTime = (await getSetting('test_schedule_time')) ?? '09:00';
+
   for (const client of await listClients()) {
     for (const sensor of await listSensors(client.id)) {
-      await sendTest(sensor);
+      const sensorDow = sensor.test_schedule_dow ?? defaultDow;
+      const sensorTime = sensor.test_schedule_time ?? defaultTime;
+      if (sensorDow === dow && sensorTime === time) await sendTest(sensor);
     }
   }
 }
@@ -112,13 +126,13 @@ export async function startNotifier(): Promise<void> {
   });
 
   await b.work(WEEKLY_TEST_QUEUE, async () => {
-    await runWeeklyTest();
+    await runScheduledTests();
   });
 
-  // Agendamento configurável (app_settings), com fallback pro padrão segunda 09:00.
-  const dow = (await getSetting('test_schedule_dow')) ?? '1';
-  const time = (await getSetting('test_schedule_time')) ?? '09:00';
-  await scheduleWeeklyTest(dow, time);
+  // Roda todo minuto — cada sensor compara seu próprio agendamento (ou o padrão global) contra
+  // o horário atual dentro de runScheduledTests. Idempotente: chamar em todo boot é o padrão
+  // do pg-boss (upsert pelo nome da fila).
+  await b.schedule(WEEKLY_TEST_QUEUE, '* * * * *', {}, { tz: 'America/Sao_Paulo' });
 }
 
 export const getEvolutionConnectionState = () =>

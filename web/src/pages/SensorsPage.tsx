@@ -23,6 +23,8 @@ interface Sensor {
   target_firmware: string | null;
   last_firmware: string | null;
   last_seen_at: string | null;
+  test_schedule_dow: string | null;
+  test_schedule_time: string | null;
 }
 
 interface ReadingPoint {
@@ -155,7 +157,7 @@ export function SensorsPage() {
 
       <div className="card" style={{ marginBottom: '1rem' }}>
         <div className="inline">
-          <strong>Teste automático:</strong>
+          <strong>Teste automático — padrão global (sensores sem agendamento próprio):</strong>
           <label>
             dia{' '}
             <select value={schedDow} onChange={(e) => setSchedDow(e.target.value)}>
@@ -214,6 +216,7 @@ export function SensorsPage() {
             <th>Temp min/max</th>
             <th>Hum min/max</th>
             <th>Calibragem</th>
+            <th>Teste automático</th>
             <th>Firmware atual</th>
             <th>Firmware alvo</th>
             <th />
@@ -293,6 +296,27 @@ export function SensorsPage() {
                 >
                   Calibrar
                 </button>
+              </td>
+              <td>
+                <select
+                  value={s.test_schedule_dow ?? ''}
+                  onChange={(e) => patch(s, { test_schedule_dow: e.target.value || null })}
+                >
+                  <option value="">(padrão)</option>
+                  <option value="0">domingo</option>
+                  <option value="1">segunda</option>
+                  <option value="2">terça</option>
+                  <option value="3">quarta</option>
+                  <option value="4">quinta</option>
+                  <option value="5">sexta</option>
+                  <option value="6">sábado</option>
+                </select>
+                <input
+                  type="time"
+                  style={{ width: '6rem' }}
+                  value={s.test_schedule_time ?? ''}
+                  onChange={(e) => patch(s, { test_schedule_time: e.target.value || null })}
+                />
               </td>
               <td>
                 {s.last_firmware ?? '—'}
