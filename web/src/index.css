@@ -427,6 +427,24 @@ form label > small { display: block; margin-bottom: 0.3rem; color: var(--on-surf
   font-family: var(--mono);
 }
 
+/* Tabela de sensores — células densas com muitos campos editáveis */
+.icon-btn.danger:hover { background: var(--status-red-bg); color: var(--status-red); border-color: var(--status-red); }
+.sensor-status { display: inline-flex; align-items: center; gap: 0.45rem; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; white-space: nowrap; }
+.sensor-status .dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; flex: none; }
+.sensor-status.online { color: var(--status-green); }
+.sensor-status.online .dot { animation: statusPulseGreen 2s infinite; }
+.sensor-status.offline { color: var(--on-surface-variant); }
+.mac-cell { font-family: var(--mono); font-size: 0.75rem; color: var(--on-surface-variant); letter-spacing: 0.01em; white-space: nowrap; }
+.range-inputs { display: inline-flex; align-items: center; gap: 0.3rem; }
+.range-inputs input { width: 3.4rem; padding: 0.4rem 0.45rem; text-align: right; font-family: var(--mono); font-size: 0.8rem; }
+.range-inputs span { color: var(--outline); font-size: 0.75rem; }
+.calib-cell, .sched-cell, .firmware-target { display: inline-flex; align-items: center; gap: 0.4rem; }
+.calib-value { font-family: var(--mono); font-size: 0.8rem; color: var(--on-surface-variant); min-width: 3.4rem; white-space: nowrap; }
+.sched-cell input[type="time"] { width: 5.5rem; }
+.firmware-current { display: inline-flex; align-items: center; gap: 0.3rem; font-family: var(--mono); font-size: 0.78rem; white-space: nowrap; }
+.firmware-current .material-symbols-outlined { font-size: 0.95rem; color: var(--status-yellow); }
+.row-actions { display: inline-flex; align-items: center; gap: 0.3rem; }
+
 /* Login */
 .login-shell {
   min-height: calc(100vh - 2rem);
