@@ -2,6 +2,7 @@ import {
   createAdminNotification,
   createAlert,
   createNotification,
+  createResolvedAlert,
   getClient,
   getFiringAlert,
   getLastNotification,
@@ -205,6 +206,43 @@ async function notifyAdminsHardware(alert: Alert, kind: 'fire' | 'resolve', vars
   const admins = await listAdminsWithPhone();
   if (admins.length === 0) return;
   const texts = await renderMessage(`hardware_${kind}`, vars);
+  for (const admin of admins) {
+    const notification = await createAdminNotification(alert.id, admin.id, 'whatsapp');
+    await enqueueWhatsapp({ notificationId: notification.id, phone: admin.phone!, text: texts.whatsapp });
+  }
+}
+
+// Rótulos pt-BR de esp_reset_reason() (ver resetReasonStr() no firmware) — "poweron" nunca
+// dispara aqui (é o boot normal); os demais indicam reinício fora do ciclo esperado.
+const RESET_REASON_LABELS: Record<string, string> = {
+  sw_restart: 'reinício por software (auto-recuperação)',
+  panic: 'pânico/crash de firmware',
+  watchdog_interrupt: 'watchdog (interrupção travada)',
+  watchdog_task: 'watchdog (tarefa travada)',
+  watchdog_other: 'watchdog',
+  brownout: 'queda de tensão (brownout)',
+  outro: 'motivo desconhecido',
+};
+
+// Evento pontual (não tem firing/resolved real) — reusa o truque do 'test'/welcome:
+// createResolvedAlert só pra ter um alert_id pra pendurar a notification. Vai só pra admins
+// com telefone, sem janela de horário/preferência (mesmo critério de notifyAdminsHardware).
+export async function notifyAdminsReboot(sensor: Sensor, resetReason: string): Promise<void> {
+  if (resetReason === 'poweron') return;
+  const admins = await listAdminsWithPhone();
+  if (admins.length === 0) return;
+
+  const cliente = await clientNameOf(sensor);
+  const quando = new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+  const vars = {
+    sensor: sensor.name,
+    cliente,
+    local: sensor.local ?? '',
+    motivo: RESET_REASON_LABELS[resetReason] ?? resetReason,
+    quando,
+  };
+  const texts = await renderMessage('reboot_fire', vars);
+  const alert = await createResolvedAlert(sensor.id, 'reboot', texts.whatsapp);
   for (const admin of admins) {
     const notification = await createAdminNotification(alert.id, admin.id, 'whatsapp');
     await enqueueWhatsapp({ notificationId: notification.id, phone: admin.phone!, text: texts.whatsapp });

@@ -17,6 +17,7 @@ const LABELS: Record<string, string> = {
   connectivity_renotify: 'Conectividade — continua offline',
   hardware_fire: 'Hardware — disparo (só admins com telefone cadastrado)',
   hardware_resolve: 'Hardware — resolvido (só admins com telefone cadastrado)',
+  reboot_fire: 'Reinício inesperado do device (só admins com telefone cadastrado)',
   welcome: 'Boas-vindas — enviada ao cadastrar contato',
 };
 
@@ -30,6 +31,7 @@ const LEGEND: Record<string, string[]> = {
   connectivity_renotify: ['sensor', 'local', 'cliente', 'temperatura', 'min', 'max', 'limite', 'segundos'],
   hardware_fire: ['sensor', 'local', 'cliente', 'segundos'],
   hardware_resolve: ['sensor', 'local', 'cliente', 'segundos'],
+  reboot_fire: ['sensor', 'local', 'cliente', 'motivo', 'quando'],
   welcome: ['nome', 'telefone', 'cliente', 'sensor', 'local', 'temperatura'],
 };
 

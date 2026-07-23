@@ -1,12 +1,13 @@
 import type { FastifyInstance } from 'fastify';
 import { getSensorByToken, updateSensor } from '../db/queries.js';
-import { evaluate } from '../services/alertService.js';
+import { evaluate, notifyAdminsReboot } from '../services/alertService.js';
 import { flushInflux, writeReadings, type Reading } from '../services/influx.js';
 
 interface IngestBody {
   readings: Array<{ temp: number; hum: number; rssi: number; ago_ms: number }>;
   fw: string;
   device_name?: string;
+  reset_reason?: string;
 }
 
 // Fronteira de confiança (device remoto) — validação de faixa não é opcional.
@@ -29,6 +30,13 @@ export async function ingestRoutes(app: FastifyInstance): Promise<void> {
     }
     const sensor = await getSensorByToken(token);
     if (!sensor) throw Object.assign(new Error('token inválido'), { statusCode: 401 });
+
+    // Manda em todo ingest (não só o 1º pós-boot) — reason é constante durante o boot atual,
+    // então é redundante mas dá visibilidade sem precisar rastrear "1º envio" no firmware.
+    if (req.body.reset_reason) {
+      req.log.info({ sensor: sensor.name, reset_reason: req.body.reset_reason }, 'device reset reason');
+      await notifyAdminsReboot(sensor, req.body.reset_reason);
+    }
 
     const readings = req.body?.readings ?? [];
     if (readings.length === 0 || readings.length > 400 || !readings.every(isValidReading)) {

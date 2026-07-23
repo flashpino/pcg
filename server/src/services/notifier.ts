@@ -90,7 +90,7 @@ async function runWeeklyTest(): Promise<void> {
 
     const alert = await createResolvedAlert(sensors[0].id, 'test', `Teste semanal de ${client.name}`);
     for (const contact of contacts) {
-      if (!contact.channel_whatsapp) continue;
+      if (!contact.active || !contact.channel_whatsapp) continue;
       const notification = await createNotification(alert.id, contact.id, 'whatsapp', 'queued', 'weekly-test');
       await enqueueWhatsapp({ notificationId: notification.id, phone: contact.phone, text });
     }

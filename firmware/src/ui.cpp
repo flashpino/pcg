@@ -128,13 +128,15 @@ static void onSignalClicked(lv_event_t* e) {
 
 static void buildDashboard() {
   scrDashboard = lv_obj_create(NULL);
+  lv_obj_set_style_bg_color(scrDashboard, lv_color_hex(0x000000), 0);
+  lv_obj_set_style_border_width(scrDashboard, 0, 0);
 
   lv_obj_t* header = lv_obj_create(scrDashboard);
   lv_obj_set_size(header, SCREEN_W, 28);
   lv_obj_align(header, LV_ALIGN_TOP_MID, 0, 0);
   lv_obj_set_flex_flow(header, LV_FLEX_FLOW_ROW);
   lv_obj_set_flex_align(header, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-  lv_obj_set_style_bg_color(header, lv_color_hex(0xFBF9F5), 0);  // D_HEADER do antigo — branco quente
+  lv_obj_set_style_bg_color(header, lv_color_hex(0x041036), 0);  // D_HEADER do antigo — branco quente
   lv_obj_set_style_border_width(header, 0, 0);
 
   lv_obj_t* clockGroup = lv_obj_create(header);
@@ -152,11 +154,11 @@ static void buildDashboard() {
 
   clockLabel = lv_label_create(clockGroup);
   lv_label_set_text(clockLabel, "--:--");
-  lv_obj_set_style_text_color(clockLabel, lv_color_hex(0x222222), 0);  // D_TIME
+  lv_obj_set_style_text_color(clockLabel, lv_color_hex(0xFFFFFF), 0);  // D_TIME
 
   dateLabel = lv_label_create(clockGroup);
   lv_label_set_text(dateLabel, "");
-  lv_obj_set_style_text_color(dateLabel, lv_color_hex(0x9A9A9A), 0);  // D_DATE
+  lv_obj_set_style_text_color(dateLabel, lv_color_hex(0xFFFFFF), 0);  // D_DATE
 
   // Escondido a pedido — header só com relógio/status à esquerda e sinal à direita.
   // O label continua existindo (não usado no header) porque a tela de renomear device
@@ -173,18 +175,20 @@ static void buildDashboard() {
   lv_obj_set_style_border_width(signalGroup, 0, 0);
   rssiLabel = lv_label_create(signalGroup);
   lv_label_set_text(rssiLabel, LV_SYMBOL_WIFI);
-  lv_obj_set_style_text_color(rssiLabel, lv_color_hex(0x555555), 0);  // D_BAR_ON
+  lv_obj_set_style_text_color(rssiLabel, lv_color_hex(0xFFFFFF), 0);  // D_BAR_ON
 
   // dois painéis lado a lado
   lv_obj_t* tempPanel = lv_obj_create(scrDashboard);
   lv_obj_set_size(tempPanel, SCREEN_W / 2 - 2, SCREEN_H - 32);
   lv_obj_align(tempPanel, LV_ALIGN_BOTTOM_LEFT, 0, 0);
-  lv_obj_set_style_bg_color(tempPanel, lv_color_hex(0xFAF5EC), 0);
+  lv_obj_set_style_bg_color(tempPanel, lv_color_hex(0x000000), 0);
+  lv_obj_set_style_border_color(tempPanel, lv_color_hex(0xFFFFFF), 0);
+  lv_obj_set_style_border_width(tempPanel, 1, 0);
   lv_obj_clear_flag(tempPanel, LV_OBJ_FLAG_SCROLLABLE);
 
   lv_obj_t* tempLabel = lv_label_create(tempPanel);
   lv_label_set_text(tempLabel, "TEMPERATURA");
-  lv_obj_set_style_text_color(tempLabel, lv_color_hex(0xE08A4E), 0);
+  lv_obj_set_style_text_color(tempLabel, lv_color_hex(0xFFFFFF), 0);
   lv_obj_align(tempLabel, LV_ALIGN_TOP_MID, 0, 2);
 
   // ponytail: transform_zoom pra aumentar o número foi tentado e revertido — no LVGL
@@ -193,6 +197,7 @@ static void buildDashboard() {
   // no lv_conf.h (feito) e usar essa fonte diretamente no label.
   tempValueLabel = lv_label_create(tempPanel);
   lv_obj_set_style_text_font(tempValueLabel, &lv_font_montserrat_48, 0);
+  lv_obj_set_style_text_color(tempValueLabel, lv_color_hex(0xFFFFFF), 0);
   lv_label_set_text(tempValueLabel, "--.-");
   lv_obj_align(tempValueLabel, LV_ALIGN_TOP_MID, 0, 20);
 
@@ -206,25 +211,29 @@ static void buildDashboard() {
   lv_obj_set_style_border_width(tempChart, 0, 0);
   lv_obj_set_style_bg_opa(tempChart, LV_OPA_TRANSP, 0);
   lv_obj_set_style_pad_all(tempChart, 0, 0);
-  tempSeries = lv_chart_add_series(tempChart, lv_color_hex(0xE08A4E), LV_CHART_AXIS_PRIMARY_Y);
+  tempSeries = lv_chart_add_series(tempChart, lv_color_hex(0xDB8A5A), LV_CHART_AXIS_PRIMARY_Y);
 
   tempMinMaxLabel = lv_label_create(tempPanel);
+  lv_obj_set_style_text_color(tempMinMaxLabel, lv_color_hex(0xFFFFFF), 0);
   lv_label_set_text(tempMinMaxLabel, "max -.- / min -.-");
   lv_obj_align(tempMinMaxLabel, LV_ALIGN_BOTTOM_MID, 0, -4);
 
   lv_obj_t* humPanel = lv_obj_create(scrDashboard);
   lv_obj_set_size(humPanel, SCREEN_W / 2 - 2, SCREEN_H - 32);
   lv_obj_align(humPanel, LV_ALIGN_BOTTOM_RIGHT, 0, 0);
-  lv_obj_set_style_bg_color(humPanel, lv_color_hex(0xEEF3F8), 0);
+  lv_obj_set_style_bg_color(humPanel, lv_color_hex(0x041036), 0);
+  lv_obj_set_style_border_color(humPanel, lv_color_hex(0xFFFFFF), 0);
+  lv_obj_set_style_border_width(humPanel, 1, 0);
   lv_obj_clear_flag(humPanel, LV_OBJ_FLAG_SCROLLABLE);
 
   lv_obj_t* humLabel = lv_label_create(humPanel);
   lv_label_set_text(humLabel, "UMIDADE");
-  lv_obj_set_style_text_color(humLabel, lv_color_hex(0x4E9BD6), 0);
+  lv_obj_set_style_text_color(humLabel, lv_color_hex(0xFFFFFF), 0);
   lv_obj_align(humLabel, LV_ALIGN_TOP_MID, 0, 2);
 
   humValueLabel = lv_label_create(humPanel);
   lv_obj_set_style_text_font(humValueLabel, &lv_font_montserrat_48, 0);
+  lv_obj_set_style_text_color(humValueLabel, lv_color_hex(0xFFFFFF), 0);
   lv_label_set_text(humValueLabel, "--.-");
   lv_obj_align(humValueLabel, LV_ALIGN_TOP_MID, 0, 20);
 
@@ -238,9 +247,10 @@ static void buildDashboard() {
   lv_obj_set_style_border_width(humChart, 0, 0);
   lv_obj_set_style_bg_opa(humChart, LV_OPA_TRANSP, 0);
   lv_obj_set_style_pad_all(humChart, 0, 0);
-  humSeries = lv_chart_add_series(humChart, lv_color_hex(0x4E9BD6), LV_CHART_AXIS_PRIMARY_Y);
+  humSeries = lv_chart_add_series(humChart, lv_color_hex(0x4F96C9), LV_CHART_AXIS_PRIMARY_Y);
 
   humMinMaxLabel = lv_label_create(humPanel);
+  lv_obj_set_style_text_color(humMinMaxLabel, lv_color_hex(0xFFFFFF), 0);
   lv_label_set_text(humMinMaxLabel, "max -.- / min -.-");
   lv_obj_align(humMinMaxLabel, LV_ALIGN_BOTTOM_MID, 0, -4);
 }
@@ -270,7 +280,7 @@ static void updateDashboardReading(float temp, float hum) {
   char buf[16];
   snprintf(buf, sizeof(buf), "%.1f", temp);
   lv_label_set_text(tempValueLabel, buf);
-  snprintf(buf, sizeof(buf), "%.0f", hum);
+  snprintf(buf, sizeof(buf), "%.0f%%", hum);
   lv_label_set_text(humValueLabel, buf);
 
   // Sparkline agregado: 1 ponto = média de 1 min, então a janela de 50 pontos cobre ~50 min.
@@ -338,7 +348,7 @@ static void updateHeader() {
   // "tudo ok" (verde), sem precisar de um widget novo no header.
   lv_color_t dotColor = !online ? lv_palette_main(LV_PALETTE_GREY)
                       : lastNetEvent.sensorStale ? lv_palette_main(LV_PALETTE_RED)
-                                                 : lv_palette_main(LV_PALETTE_GREEN);
+                                                 : lv_color_hex(0x35B57F);
   lv_obj_set_style_bg_color(statusDot, dotColor, 0);
 
   // Referência mostra o SSID conectado, não o nome do device — cai pro nome do device
