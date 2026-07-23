@@ -243,7 +243,7 @@ export function ClientContacts({ clientId }: { clientId: number }) {
                   Boas-vindas
                 </button>{' '}
                 <button className="secondary" onClick={() => sendTest(c)}>
-                  Testar
+                  Testar canal
                 </button>{' '}
                 <button className="danger" onClick={() => remove(c)}>
                   Remover

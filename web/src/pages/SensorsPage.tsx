@@ -286,6 +286,16 @@ export function SensorsPage() {
                 )}
               </td>
               <td>
+                {s.client_id !== null && (
+                  <>
+                    <button
+                      className="secondary"
+                      onClick={() => runMutation(() => api.post(`/api/sensors/${s.id}/test`, {}), 'Teste enviado.')}
+                    >
+                      Testar dispositivo
+                    </button>{' '}
+                  </>
+                )}
                 <button
                   className="secondary"
                   onClick={() => {

@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { deleteSensor, getSensor, listSensors, updateSensor, type SensorUpdate } from '../db/queries.js';
 import { queryLatestReadings, queryReadings } from '../services/influx.js';
 import { calcOffset } from '../services/calibration.js';
+import { sendTest } from '../services/alertService.js';
 
 export async function sensorsRoutes(app: FastifyInstance): Promise<void> {
   // Sensores nascem via /api/provision. CRUD aqui só lista, atribui cliente/nome/limites e remove.
@@ -64,5 +65,12 @@ export async function sensorsRoutes(app: FastifyInstance): Promise<void> {
 
     const temp_offset = Math.round(calcOffset(sensor.temp_offset, reference, latest.temperature) * 10) / 10;
     return updateSensor(sensor.id, { temp_offset });
+  });
+
+  app.post<{ Params: { id: string } }>('/api/sensors/:id/test', async (req) => {
+    const sensor = await getSensor(Number(req.params.id));
+    if (!sensor) throw Object.assign(new Error('sensor não encontrado'), { statusCode: 404 });
+    await sendTest(sensor);
+    return { ok: true };
   });
 }
