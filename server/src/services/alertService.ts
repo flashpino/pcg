@@ -293,8 +293,11 @@ export async function sendTest(sensor: Sensor): Promise<void> {
 
   const latest = (await queryLatestReadings([sensor.id])).get(sensor.id);
   const cliente = await clientNameOf(sensor);
-  const quando = latest?.time
-    ? new Date(latest.time).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })
+  // last_seen_at (Postgres, gravado em todo /api/ingest) em vez de latest.time (Influx) —
+  // o pivot de queryLatestReadings junta temperature/humidity/rssi por sensor_id, não por
+  // _time, então o _time devolvido é pouco confiável mesmo quando os valores dos campos batem.
+  const quando = sensor.last_seen_at
+    ? new Date(sensor.last_seen_at).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })
     : '--:--';
   const vars = {
     sensor: sensor.name,
