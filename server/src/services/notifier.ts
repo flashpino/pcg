@@ -2,17 +2,28 @@ import { PgBoss } from 'pg-boss';
 import twilio from 'twilio';
 import {
   createNotification,
-  createResolvedAlert,
+  getSetting,
   listClients,
-  listContacts,
   listSensors,
   updateNotificationStatus,
 } from '../db/queries.js';
+import { sendTest } from './alertService.js';
 
 const WHATSAPP_QUEUE = 'notify-whatsapp';
 const VOICE_QUEUE = 'notify-voice';
 const WEEKLY_TEST_QUEUE = 'weekly-test';
 const QUEUE_OPTS = { retryLimit: 5, retryBackoff: true, expireInSeconds: 120 };
+
+// 'HH:MM' + dia da semana (0-6) -> cron 'MM HH * * DOW'. A UI já valida os formatos.
+export function buildTestCron(dow: string, time: string): string {
+  const [hh, mm] = time.split(':');
+  return `${Number(mm)} ${Number(hh)} * * ${Number(dow)}`;
+}
+
+export async function scheduleWeeklyTest(dow: string, time: string): Promise<void> {
+  // pg-boss faz upsert pelo nome da fila — chamar de novo reprograma o cron em runtime.
+  await getBoss().schedule(WEEKLY_TEST_QUEUE, buildTestCron(dow, time), {}, { tz: 'America/Sao_Paulo' });
+}
 
 // Lazy: o construtor do PgBoss lança erro síncrono sem DATABASE_URL — instanciar no module
 // load quebraria qualquer arquivo que importe este módulo (ex. alertService.test.ts) fora do server.
@@ -69,30 +80,12 @@ async function runJob(job: NotifyJob, send: (job: NotifyJob) => Promise<void>): 
   }
 }
 
-// Sem filtro de janela aqui (GOTCHA da Task 8b): segunda 09:00 já é horário comercial — se
-// aplicasse a janela do contato, quem tem janela noturna nunca descobriria que o canal quebrou.
-// Sem ligação de voz — é um teste de rotina, não uma emergência.
+// Antes era um resumo online/offline por cliente; agora envia a temperatura atual de cada
+// sensor (uma msg por sensor), reusando sendTest — mesmo texto/pipeline do botão manual.
 async function runWeeklyTest(): Promise<void> {
-  const now = Date.now();
   for (const client of await listClients()) {
-    const sensors = await listSensors(client.id);
-    const contacts = await listContacts(client.id);
-    if (sensors.length === 0 || contacts.length === 0) continue; // sem sensor: sem alert_id pra pendurar a notification
-
-    const lines = sensors.map((s) => {
-      const online = s.last_seen_at !== null && now - new Date(s.last_seen_at).getTime() < s.offline_after_seconds * 1000;
-      const when = s.last_seen_at
-        ? new Date(s.last_seen_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Sao_Paulo' })
-        : '--:--';
-      return online ? `✅ ${s.name}: ok — última leitura ${when}` : `⚠️ ${s.name}: sem leitura recente (última ${when})`;
-    });
-    const text = `Teste semanal PCG — ${client.name}:\n${lines.join('\n')}`;
-
-    const alert = await createResolvedAlert(sensors[0].id, 'test', `Teste semanal de ${client.name}`);
-    for (const contact of contacts) {
-      if (!contact.active || !contact.channel_whatsapp) continue;
-      const notification = await createNotification(alert.id, contact.id, 'whatsapp', 'queued', 'weekly-test');
-      await enqueueWhatsapp({ notificationId: notification.id, phone: contact.phone, text });
+    for (const sensor of await listSensors(client.id)) {
+      await sendTest(sensor);
     }
   }
 }
@@ -123,8 +116,10 @@ export async function startNotifier(): Promise<void> {
     await runWeeklyTest();
   });
 
-  // Idempotente: chamar em todo boot é o padrão do pg-boss (upsert pelo nome do schedule).
-  await b.schedule(WEEKLY_TEST_QUEUE, '0 9 * * 1', {}, { tz: 'America/Sao_Paulo' });
+  // Agendamento configurável (app_settings), com fallback pro padrão segunda 09:00.
+  const dow = (await getSetting('test_schedule_dow')) ?? '1';
+  const time = (await getSetting('test_schedule_time')) ?? '09:00';
+  await scheduleWeeklyTest(dow, time);
 }
 
 export const getEvolutionConnectionState = () =>
