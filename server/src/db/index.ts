@@ -47,6 +47,9 @@ const DEFAULT_MESSAGE_TEMPLATES: Record<string, { whatsapp: string; voice?: stri
     whatsapp: '🔄 Sensor {{$sensor}} ({{$cliente}} / {{$local}}) reiniciou sozinho em {{$quando}}. Motivo: {{$motivo}}.',
   },
   welcome: { whatsapp: 'Olá {{$nome}}! Você foi cadastrado no monitoramento PCG.' },
+  test: {
+    whatsapp: 'Teste PCG — {{$sensor}} ({{$local}}): temperatura atual {{$temperatura}}°C ({{$quando}}).',
+  },
 };
 
 // Idempotente (ON CONFLICT DO NOTHING) — não sobrescreve customização já salva pelo admin.

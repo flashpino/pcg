@@ -19,6 +19,7 @@ const LABELS: Record<string, string> = {
   hardware_resolve: 'Hardware — resolvido (só admins com telefone cadastrado)',
   reboot_fire: 'Reinício inesperado do device (só admins com telefone cadastrado)',
   welcome: 'Boas-vindas — enviada ao cadastrar contato',
+  test: 'Teste de dispositivo (manual/automático)',
 };
 
 const LEGEND: Record<string, string[]> = {
@@ -33,6 +34,7 @@ const LEGEND: Record<string, string[]> = {
   hardware_resolve: ['sensor', 'local', 'cliente', 'segundos'],
   reboot_fire: ['sensor', 'local', 'cliente', 'motivo', 'quando'],
   welcome: ['nome', 'telefone', 'cliente', 'sensor', 'local', 'temperatura'],
+  test: ['sensor', 'local', 'cliente', 'temperatura', 'quando'],
 };
 
 function TemplateForm({ tpl, onSaved }: { tpl: Template; onSaved: () => void }) {
