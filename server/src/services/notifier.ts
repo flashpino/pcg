@@ -1,7 +1,6 @@
 import { PgBoss } from 'pg-boss';
 import twilio from 'twilio';
 import {
-  createNotification,
   getSetting,
   listClients,
   listSensors,
