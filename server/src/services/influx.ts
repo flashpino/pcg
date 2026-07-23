@@ -67,8 +67,10 @@ export interface LatestReading {
   time: string;
 }
 
-// group por sensor_id+_field antes do last() = 1 linha por (sensor, campo); pivot com rowKey
-// sensor_id (em vez de _time, que difere entre campos) junta os 3 campos numa linha por sensor.
+// group por sensor_id+_field antes do last() = 1 linha por (sensor, campo); reagrupa só por
+// sensor_id e pivota com rowKey _time (não sensor_id) — temperature/humidity/rssi vêm sempre
+// do mesmo Point (mesmo timestamp, ver writeReadings), então _time é a chave certa pra juntar
+// os 3 campos na mesma linha sem risco de misturar valores de instantes diferentes.
 // sensorIds vem de listSensors() (nosso próprio banco), não de input do usuário — sem injection.
 export async function queryLatestReadings(sensorIds: number[]): Promise<Map<number, LatestReading>> {
   const result = new Map<number, LatestReading>();
@@ -81,7 +83,8 @@ export async function queryLatestReadings(sensorIds: number[]): Promise<Map<numb
       |> filter(fn: (r) => r._measurement == "readings" and contains(value: r.sensor_id, set: [${set}]))
       |> group(columns: ["sensor_id", "_field"])
       |> last()
-      |> pivot(rowKey: ["sensor_id"], columnKey: ["_field"], valueColumn: "_value")
+      |> group(columns: ["sensor_id"])
+      |> pivot(rowKey: ["_time"], columnKey: ["_field"], valueColumn: "_value")
   `;
   await queryApi.collectRows(flux, (values, tableMeta) => {
     const row = tableMeta.toObject(values) as Record<string, unknown>;
