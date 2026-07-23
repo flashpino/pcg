@@ -309,6 +309,7 @@ export interface Alert {
   message: string;
   fired_at: string;
   resolved_at: string | null;
+  sensor_name?: string;
 }
 
 export const getFiringAlert = (sensorId: number, type: Alert['type']) =>
@@ -353,6 +354,8 @@ export interface Notification {
   status: string;
   detail: string | null;
   created_at: string;
+  contact_name?: string | null;
+  admin_email?: string | null;
 }
 
 export const createNotification = (
@@ -431,15 +434,26 @@ export const listAlerts = async (state?: Alert['state'], limit?: number): Promis
   const limitClause = limit ? ` LIMIT ${Number(limit)}` : '';
   const alerts = await (
     state
-      ? pool.query<Alert>(`SELECT * FROM alerts WHERE state = $1 ORDER BY fired_at DESC${limitClause}`, [state])
-      : pool.query<Alert>(`SELECT * FROM alerts ORDER BY fired_at DESC${limitClause}`)
+      ? pool.query<Alert>(
+          `SELECT a.*, s.name AS sensor_name FROM alerts a JOIN sensors s ON s.id = a.sensor_id
+           WHERE a.state = $1 ORDER BY a.fired_at DESC${limitClause}`,
+          [state],
+        )
+      : pool.query<Alert>(
+          `SELECT a.*, s.name AS sensor_name FROM alerts a JOIN sensors s ON s.id = a.sensor_id
+           ORDER BY a.fired_at DESC${limitClause}`,
+        )
   ).then((r) => r.rows);
   if (alerts.length === 0) return [];
 
   const notifications = await pool
-    .query<Notification>('SELECT * FROM notifications WHERE alert_id = ANY($1) ORDER BY created_at', [
-      alerts.map((a) => a.id),
-    ])
+    .query<Notification>(
+      `SELECT n.*, c.name AS contact_name, u.email AS admin_email FROM notifications n
+       LEFT JOIN contacts c ON c.id = n.contact_id
+       LEFT JOIN users u ON u.id = n.admin_id
+       WHERE n.alert_id = ANY($1) ORDER BY n.created_at`,
+      [alerts.map((a) => a.id)],
+    )
     .then((r) => r.rows);
 
   const byAlert = new Map<number, Notification[]>();

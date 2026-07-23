@@ -3,16 +3,19 @@ import { api } from '../api.js';
 
 interface Notification {
   id: number;
-  contact_id: number;
+  contact_id: number | null;
   channel: string;
   status: string;
   detail: string | null;
   created_at: string;
+  contact_name: string | null;
+  admin_email: string | null;
 }
 
 interface Alert {
   id: number;
   sensor_id: number;
+  sensor_name: string;
   type: string;
   state: 'firing' | 'resolved';
   value: number | null;
@@ -21,6 +24,14 @@ interface Alert {
   resolved_at: string | null;
   notifications: Notification[];
 }
+
+const STATUS_LABELS: Record<string, string> = {
+  queued: 'na fila',
+  sent: 'enviado',
+  failed: 'falhou',
+  skipped_window: 'fora da janela',
+  skipped_pref: 'desativado',
+};
 
 export function AlertsPage() {
   const [alerts, setAlerts] = useState<Alert[]>([]);
@@ -37,7 +48,7 @@ export function AlertsPage() {
   useEffect(load, [state]);
 
   async function resolve(a: Alert) {
-    if (!window.confirm(`Marcar o alerta de ${a.type} (sensor #${a.sensor_id}) como resolvido?`)) return;
+    if (!window.confirm(`Marcar o alerta de ${a.type} (${a.sensor_name}) como resolvido?`)) return;
     await api.post(`/api/alerts/${a.id}/resolve`);
     load();
   }
@@ -60,7 +71,7 @@ export function AlertsPage() {
           </strong>
           <p>{a.message}</p>
           <small>
-            sensor #{a.sensor_id} — disparado em {new Date(a.fired_at).toLocaleString('pt-BR')}
+            {a.sensor_name} — disparado em {new Date(a.fired_at).toLocaleString('pt-BR')}
             {a.resolved_at && ` — resolvido em ${new Date(a.resolved_at).toLocaleString('pt-BR')}`}
           </small>
           {a.state === 'firing' && (
@@ -83,9 +94,9 @@ export function AlertsPage() {
               <tbody>
                 {a.notifications.map((n) => (
                   <tr key={n.id}>
-                    <td>#{n.contact_id}</td>
+                    <td>{n.contact_name ?? n.admin_email ?? `#${n.contact_id}`}</td>
                     <td>{n.channel}</td>
-                    <td>{n.status}</td>
+                    <td>{STATUS_LABELS[n.status] ?? n.status}</td>
                     <td>{n.detail ?? '-'}</td>
                   </tr>
                 ))}
