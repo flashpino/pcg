@@ -16,6 +16,7 @@ import {
   type ContactAlertPref,
   type Sensor,
 } from '../db/queries.js';
+import { queryLatestReadings } from './influx.js';
 import { renderTemplate } from './messageTemplates.js';
 import { enqueueVoice, enqueueWhatsapp } from './notifier.js';
 import { isWithinWindow } from './scheduleWindow.js';
@@ -282,4 +283,30 @@ export async function evaluateConnectivity(sensor: Sensor, offline: boolean): Pr
 
   const texts = await renderMessage('connectivity_renotify', vars);
   await notifyContacts(firing!, contacts, prefs, 'connectivity', ['whatsapp'], texts, 'renotify');
+}
+
+// Teste de dispositivo: mesma mensagem disparada pelo botão do painel, pelo device (ESP32) e
+// pelo agendamento automático. Reaproveita a pref de 'temperature' de cada contato (janela/dias)
+// via notifyContacts — o texto vem do template 'test', não da chave do tipo. Sem voz.
+export async function sendTest(sensor: Sensor): Promise<void> {
+  if (sensor.client_id === null) return; // sensor não reivindicado não tem contatos
+
+  const latest = (await queryLatestReadings([sensor.id])).get(sensor.id);
+  const cliente = await clientNameOf(sensor);
+  const quando = latest?.time
+    ? new Date(latest.time).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })
+    : '--:--';
+  const vars = {
+    sensor: sensor.name,
+    cliente,
+    local: sensor.local ?? '',
+    temperatura: latest?.temperature ?? '--', // sem leitura recente ainda envia (revela sensor mudo)
+    quando,
+  };
+
+  const texts = await renderMessage('test', vars);
+  const alert = await createResolvedAlert(sensor.id, 'test', texts.whatsapp);
+  const contacts = await listContacts(sensor.client_id);
+  const prefs = await listContactAlertPrefsByClient(sensor.client_id);
+  await notifyContacts(alert, contacts, prefs, 'temperature', ['whatsapp'], texts, 'fire');
 }
