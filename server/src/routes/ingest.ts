@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { getSensorByToken, updateSensor } from '../db/queries.js';
-import { evaluate, notifyAdminsReboot } from '../services/alertService.js';
+import { evaluate, notifyAdminsReboot, sendTest } from '../services/alertService.js';
 import { flushInflux, writeReadings, type Reading } from '../services/influx.js';
 
 interface IngestBody {
@@ -66,5 +66,17 @@ export async function ingestRoutes(app: FastifyInstance): Promise<void> {
       : undefined;
 
     return { ok: true, ota };
+  });
+
+  // Disparado pelo botão "Testar dispositivo" na tela do ESP32 — mesma ação do botão do painel.
+  app.post('/api/device/test', async (req) => {
+    const token = req.headers['x-device-token'];
+    if (typeof token !== 'string' || !token) {
+      throw Object.assign(new Error('token ausente'), { statusCode: 401 });
+    }
+    const sensor = await getSensorByToken(token);
+    if (!sensor) throw Object.assign(new Error('token inválido'), { statusCode: 401 });
+    await sendTest(sensor);
+    return { ok: true };
   });
 }

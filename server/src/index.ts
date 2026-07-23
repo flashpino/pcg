@@ -37,7 +37,7 @@ if (missing.length > 0) {
 
 // Rotas /api/* públicas: sem cookie/JWT exigido. Tudo fora de /api (shell do painel,
 // assets estáticos) é público por padrão — a SPA decide mostrar login via /api/auth/me.
-const PUBLIC_API_ROUTES = ['/api/auth/login', '/api/client/login', '/api/ingest', '/api/provision'];
+const PUBLIC_API_ROUTES = ['/api/auth/login', '/api/client/login', '/api/ingest', '/api/provision', '/api/device/test'];
 const isPublic = (url: string) => {
   const path = url.split('?')[0];
   if (!path.startsWith('/api/')) return true;
