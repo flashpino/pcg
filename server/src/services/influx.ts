@@ -67,10 +67,12 @@ export interface LatestReading {
   time: string;
 }
 
-// group por sensor_id+_field antes do last() = 1 linha por (sensor, campo); reagrupa só por
-// sensor_id e pivota com rowKey _time (não sensor_id) — temperature/humidity/rssi vêm sempre
-// do mesmo Point (mesmo timestamp, ver writeReadings), então _time é a chave certa pra juntar
-// os 3 campos na mesma linha sem risco de misturar valores de instantes diferentes.
+// group por sensor_id+_field antes do last() = 1 linha por (sensor, campo); sort explícito
+// antes do last() é obrigatório — last() não garante pegar o ponto cronologicamente mais
+// recente sem os dados ordenados por _time (gotcha conhecido do Flux após group()). Reagrupa
+// só por sensor_id e pivota com rowKey _time (não sensor_id) — temperature/humidity/rssi vêm
+// sempre do mesmo Point (mesmo timestamp, ver writeReadings), então _time é a chave certa pra
+// juntar os 3 campos na mesma linha sem risco de misturar valores de instantes diferentes.
 // sensorIds vem de listSensors() (nosso próprio banco), não de input do usuário — sem injection.
 export async function queryLatestReadings(sensorIds: number[]): Promise<Map<number, LatestReading>> {
   const result = new Map<number, LatestReading>();
@@ -82,6 +84,7 @@ export async function queryLatestReadings(sensorIds: number[]): Promise<Map<numb
       |> range(start: -30d)
       |> filter(fn: (r) => r._measurement == "readings" and contains(value: r.sensor_id, set: [${set}]))
       |> group(columns: ["sensor_id", "_field"])
+      |> sort(columns: ["_time"])
       |> last()
       |> group(columns: ["sensor_id"])
       |> pivot(rowKey: ["_time"], columnKey: ["_field"], valueColumn: "_value")
