@@ -67,7 +67,7 @@ function TemplateForm({ tpl, onSaved }: { tpl: Template; onSaved: () => void }) 
         <small>Template da mensagem</small>
         <textarea
           className="tpl-code"
-          rows={2}
+          rows={15}
           value={whatsapp}
           onChange={(e) => setWhatsapp(e.target.value)}
           required
@@ -76,7 +76,7 @@ function TemplateForm({ tpl, onSaved }: { tpl: Template; onSaved: () => void }) 
       {hasVoice && (
         <label>
           <small>Ligação de voz (só disparo de temperatura)</small>
-          <textarea className="tpl-code" rows={2} value={voice} onChange={(e) => setVoice(e.target.value)} />
+          <textarea className="tpl-code" rows={15} value={voice} onChange={(e) => setVoice(e.target.value)} />
         </label>
       )}
       <p className="tpl-vars">
