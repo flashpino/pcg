@@ -57,11 +57,20 @@ export function SensorsPage() {
   const [calibrating, setCalibrating] = useState<number | null>(null);
   const [calibLatest, setCalibLatest] = useState<LatestReading | null>(null);
   const [calibReference, setCalibReference] = useState('');
+  const [schedDow, setSchedDow] = useState('1');
+  const [schedTime, setSchedTime] = useState('09:00');
 
   function load() {
     api.get<Sensor[]>('/api/sensors').then(setSensors).catch((err) => setError(err.message));
     api.get<Client[]>('/api/clients').then(setClients).catch(() => {});
     api.get<Firmware[]>('/api/firmware').then(setFirmwares).catch(() => {});
+    api
+      .get<{ dow: string; time: string }>('/api/settings/test-schedule')
+      .then((s) => {
+        setSchedDow(s.dow);
+        setSchedTime(s.time);
+      })
+      .catch(() => {});
   }
 
   useEffect(load, []);
@@ -143,6 +152,37 @@ export function SensorsPage() {
       <h2>Sensores em Campo</h2>
       {error && <p className="error">{error}</p>}
       {message && <p className="success">{message}</p>}
+
+      <div className="card" style={{ marginBottom: '1rem' }}>
+        <div className="inline">
+          <strong>Teste automático:</strong>
+          <label>
+            dia{' '}
+            <select value={schedDow} onChange={(e) => setSchedDow(e.target.value)}>
+              <option value="0">domingo</option>
+              <option value="1">segunda</option>
+              <option value="2">terça</option>
+              <option value="3">quarta</option>
+              <option value="4">quinta</option>
+              <option value="5">sexta</option>
+              <option value="6">sábado</option>
+            </select>
+          </label>
+          <label>
+            hora <input type="time" value={schedTime} onChange={(e) => setSchedTime(e.target.value)} />
+          </label>
+          <button
+            onClick={() =>
+              runMutation(
+                () => api.put('/api/settings/test-schedule', { dow: schedDow, time: schedTime }),
+                'Agendamento salvo.',
+              )
+            }
+          >
+            Salvar
+          </button>
+        </div>
+      </div>
 
       <div className="kpi-grid">
         <div className="kpi-tile">
