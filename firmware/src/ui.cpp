@@ -78,6 +78,10 @@ static lv_obj_t* humMinMaxLabel;
 static lv_obj_t* humChart;
 static lv_chart_series_t* humSeries;
 
+// overlay de feedback do teste de dispositivo
+static lv_obj_t* testFeedbackLabel;
+static uint32_t testFeedbackHideAt = 0;  // 0 = fica visível até o resultado chegar
+
 // pin screen
 static lv_obj_t* pinDisplay;
 static String pinBuffer;
@@ -106,6 +110,8 @@ static void showTextInput(const char* title, const char* placeholder, void (*onS
 static void showIpConfig();
 static void showNetInfo();
 static void showCalibration();
+static void showTestFeedback(const char* msg, uint32_t holdMs);
+static void onMenuTestDevice(lv_event_t* e);
 
 // --- Helpers de estilo ---------------------------------------------------------------------
 static lv_obj_t* makeBackButton(lv_obj_t* parent, lv_event_cb_t cb) {
@@ -253,10 +259,31 @@ static void buildDashboard() {
   lv_obj_set_style_text_color(humMinMaxLabel, lv_color_hex(0xFFFFFF), 0);
   lv_label_set_text(humMinMaxLabel, "max -.- / min -.-");
   lv_obj_align(humMinMaxLabel, LV_ALIGN_BOTTOM_MID, 0, -4);
+
+  testFeedbackLabel = lv_label_create(scrDashboard);
+  lv_obj_set_style_bg_color(testFeedbackLabel, lv_color_hex(0x041036), 0);
+  lv_obj_set_style_bg_opa(testFeedbackLabel, LV_OPA_COVER, 0);
+  lv_obj_set_style_text_color(testFeedbackLabel, lv_color_hex(0xFFFFFF), 0);
+  lv_obj_set_style_pad_all(testFeedbackLabel, 8, 0);
+  lv_obj_align(testFeedbackLabel, LV_ALIGN_CENTER, 0, 0);
+  lv_obj_add_flag(testFeedbackLabel, LV_OBJ_FLAG_HIDDEN);
 }
 
 static void showDashboard() {
   lv_scr_load(scrDashboard);
+}
+
+// holdMs = 0 mantém visível até chegar o resultado; > 0 esconde sozinho depois desse tempo.
+static void showTestFeedback(const char* msg, uint32_t holdMs) {
+  lv_label_set_text(testFeedbackLabel, msg);
+  lv_obj_clear_flag(testFeedbackLabel, LV_OBJ_FLAG_HIDDEN);
+  testFeedbackHideAt = holdMs ? millis() + holdMs : 0;
+}
+
+static void onMenuTestDevice(lv_event_t* e) {
+  net::requestDeviceTest();
+  showDashboard();
+  showTestFeedback("enviando...", 0);
 }
 
 // Autoescala do sparkline. Sem isso o range default do LVGL (0..100) deixava todos os
@@ -468,6 +495,7 @@ static void buildMenu() {
   lv_obj_align(list, LV_ALIGN_BOTTOM_MID, 0, -4);
 
   lv_obj_add_event_cb(lv_list_add_btn(list, LV_SYMBOL_WIFI, "Redes WiFi"), onMenuWifi, LV_EVENT_CLICKED, nullptr);
+  lv_obj_add_event_cb(lv_list_add_btn(list, LV_SYMBOL_BELL, "Testar dispositivo"), onMenuTestDevice, LV_EVENT_CLICKED, nullptr);
   lv_obj_add_event_cb(lv_list_add_btn(list, LV_SYMBOL_EDIT, "Nome do dispositivo"), onMenuDeviceName, LV_EVENT_CLICKED, nullptr);
   lv_obj_add_event_cb(lv_list_add_btn(list, LV_SYMBOL_SETTINGS, "Configurar IP"), onMenuIp, LV_EVENT_CLICKED, nullptr);
   lv_obj_add_event_cb(lv_list_add_btn(list, LV_SYMBOL_KEYBOARD, "Trocar PIN"), onMenuChangePin, LV_EVENT_CLICKED, nullptr);
@@ -777,6 +805,15 @@ void tick() {
   }
 
   pollWifiScan();
+
+  // Resultado do teste de dispositivo (setado pela task de rede) — atualiza o overlay.
+  net::TestState ts = net::consumeTestResult();
+  if (ts == net::TestState::SENT) showTestFeedback("enviado " LV_SYMBOL_OK, 3000);
+  else if (ts == net::TestState::FAILED) showTestFeedback("falha ao enviar", 3000);
+  if (testFeedbackHideAt && millis() >= testFeedbackHideAt) {
+    lv_obj_add_flag(testFeedbackLabel, LV_OBJ_FLAG_HIDDEN);
+    testFeedbackHideAt = 0;
+  }
 
   // updateHeader() reescreve relógio/data/sinal (invalida e redesenha widgets) — chamar
   // isso a ~200Hz (tick() roda a cada 5ms no loop principal) causava o piscar visível na

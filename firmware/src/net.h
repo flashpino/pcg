@@ -33,4 +33,13 @@ void begin(QueueHandle_t uiQueue);
 // briga pelo rádio bem no meio do scan (WIFI_SCAN_FAILED ou 0 redes encontradas).
 void pauseForScan(bool pause);
 
+// Resultado do teste disparado pela UI (core 1) e executado pela task de rede (core 0).
+enum class TestState : uint8_t { IDLE, PENDING, SENT, FAILED };
+
+// A UI chama para pedir um envio de teste (thread-safe, só seta um flag).
+void requestDeviceTest();
+
+// A UI faz poll do resultado; ao ler SENT/FAILED, o estado volta a IDLE (consumido).
+TestState consumeTestResult();
+
 }  // namespace net

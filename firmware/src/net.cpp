@@ -87,6 +87,21 @@ void pauseForScan(bool pause) {
   scanPaused = pause;
 }
 
+// --- Teste de dispositivo (disparado pela UI) ------------------------------------------------
+static volatile bool testRequested = false;
+static volatile TestState testState = TestState::IDLE;
+
+void requestDeviceTest() {
+  testState = TestState::PENDING;
+  testRequested = true;
+}
+
+TestState consumeTestResult() {
+  TestState s = testState;
+  if (s == TestState::SENT || s == TestState::FAILED) testState = TestState::IDLE;
+  return s;
+}
+
 static bool ensureConnected() {
   if (WiFi.status() == WL_CONNECTED) return true;
   if (scanPaused) return false;  // UI escaneando — não disputa o rádio com WiFi.begin()
@@ -137,6 +152,19 @@ static WiFiClientSecure makeSecureClient() {
   WiFiClientSecure client;
   client.setInsecure();
   return client;
+}
+
+static void sendDeviceTest() {
+  WiFiClientSecure client = makeSecureClient();
+  HTTPClient http;
+  if (!http.begin(client, String(SERVER_URL) + "/api/device/test")) {
+    testState = TestState::FAILED;
+    return;
+  }
+  http.addHeader("X-Device-Token", storage::loadDeviceToken());
+  int code = http.POST("");
+  http.end();
+  testState = (code == 200) ? TestState::SENT : TestState::FAILED;
 }
 
 // --- Provisionamento ---------------------------------------------------------------------
@@ -322,6 +350,12 @@ static void task(void* pvParameters) {
         vTaskDelay(pdMS_TO_TICKS(READ_INTERVAL_MS));
         continue;
       }
+    }
+
+    // Teste pedido pela UI — só chega aqui já conectado e provisionado.
+    if (testRequested) {
+      testRequested = false;
+      sendDeviceTest();
     }
 
     if (millis() - lastSendMs >= SEND_INTERVAL_MS) {
