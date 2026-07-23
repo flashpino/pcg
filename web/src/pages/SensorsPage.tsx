@@ -205,195 +205,214 @@ export function SensorsPage() {
         </div>
       </div>
 
-      <table>
-        <thead>
-          <tr>
-            <th>Status</th>
-            <th>Nome</th>
-            <th>Local</th>
-            <th>MAC</th>
-            <th>Cliente</th>
-            <th>Temp min/max</th>
-            <th>Hum min/max</th>
-            <th>Calibragem</th>
-            <th>Teste automático</th>
-            <th>Firmware atual</th>
-            <th>Firmware alvo</th>
-            <th />
-          </tr>
-        </thead>
-        <tbody>
-          {sensors.map((s) => (
-            <tr key={s.id}>
-              <td>
-                <span className={`sensor-status ${isOnline(s) ? 'online' : 'offline'}`}>
-                  <span className="dot" />
-                  {isOnline(s) ? 'online' : 'offline'}
-                </span>
-              </td>
-              <td>
+      <div className="sensor-grid">
+        {sensors.map((s) => (
+          <div className={`device-card${isOnline(s) ? '' : ' offline'}`} key={s.id}>
+            <div className="device-card-header">
+              <div style={{ flex: 1, minWidth: 0 }}>
                 <input
+                  className="sensor-card-title"
                   defaultValue={s.name}
                   onBlur={(e) => e.target.value !== s.name && patch(s, { name: e.target.value })}
                 />
-              </td>
-              <td>
-                <input
-                  placeholder="ex. câmara fria 2"
-                  defaultValue={s.local ?? ''}
-                  onBlur={(e) => e.target.value !== (s.local ?? '') && patch(s, { local: e.target.value || null })}
-                />
-              </td>
-              <td className="mac-cell">{s.mac}</td>
-              <td>
-                <select
-                  value={s.client_id ?? ''}
-                  onChange={(e) => patch(s, { client_id: e.target.value ? Number(e.target.value) : null })}
-                >
-                  <option value="">(não reivindicado)</option>
-                  {clients.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}
-                    </option>
-                  ))}
-                </select>
-              </td>
-              <td>
-                <span className="range-inputs">
+                <div className="mac-cell">{s.mac}</div>
+              </div>
+              <span
+                className={`status-chip ${isOnline(s) ? 'online' : 'offline'}`}
+                title={isOnline(s) ? 'online' : 'offline'}
+              >
+                <span className="dot" />
+              </span>
+            </div>
+
+            <div className="sensor-card-fields">
+              <div className="sensor-field">
+                <span className="sensor-field-label">Local</span>
+                <span className="sensor-field-value">
                   <input
-                    type="number"
-                    defaultValue={s.temp_min ?? ''}
-                    onBlur={(e) => patch(s, { temp_min: numberOrNull(e.target.value) })}
-                  />
-                  <span>–</span>
-                  <input
-                    type="number"
-                    defaultValue={s.temp_max ?? ''}
-                    onBlur={(e) => patch(s, { temp_max: numberOrNull(e.target.value) })}
+                    className="field-full"
+                    placeholder="ex. câmara fria 2"
+                    defaultValue={s.local ?? ''}
+                    onBlur={(e) => e.target.value !== (s.local ?? '') && patch(s, { local: e.target.value || null })}
                   />
                 </span>
-              </td>
-              <td>
-                <span className="range-inputs">
-                  <input
-                    type="number"
-                    defaultValue={s.hum_min ?? ''}
-                    onBlur={(e) => patch(s, { hum_min: numberOrNull(e.target.value) })}
-                  />
-                  <span>–</span>
-                  <input
-                    type="number"
-                    defaultValue={s.hum_max ?? ''}
-                    onBlur={(e) => patch(s, { hum_max: numberOrNull(e.target.value) })}
-                  />
-                </span>
-              </td>
-              <td>
-                <span className="calib-cell">
-                  <span className="calib-value">
-                    {s.temp_offset ? `${s.temp_offset > 0 ? '+' : ''}${s.temp_offset}°C` : '—'}
-                  </span>
-                  <button
-                    className="icon-btn"
-                    title="Calibrar"
-                    onClick={() => {
-                      setCalibrating(s.id);
-                      setSelected(null);
-                    }}
-                  >
-                    <span className="material-symbols-outlined">tune</span>
-                  </button>
-                </span>
-              </td>
-              <td>
-                <span className="sched-cell">
+              </div>
+              <div className="sensor-field">
+                <span className="sensor-field-label">Cliente</span>
+                <span className="sensor-field-value">
                   <select
-                    value={s.test_schedule_dow ?? ''}
-                    onChange={(e) => patch(s, { test_schedule_dow: e.target.value || null })}
+                    className="field-full"
+                    value={s.client_id ?? ''}
+                    onChange={(e) => patch(s, { client_id: e.target.value ? Number(e.target.value) : null })}
                   >
-                    <option value="">(padrão)</option>
-                    <option value="0">domingo</option>
-                    <option value="1">segunda</option>
-                    <option value="2">terça</option>
-                    <option value="3">quarta</option>
-                    <option value="4">quinta</option>
-                    <option value="5">sexta</option>
-                    <option value="6">sábado</option>
-                  </select>
-                  <input
-                    type="time"
-                    value={s.test_schedule_time ?? ''}
-                    onChange={(e) => patch(s, { test_schedule_time: e.target.value || null })}
-                  />
-                </span>
-              </td>
-              <td>
-                <span className="firmware-current">
-                  {s.last_firmware ?? '—'}
-                  {s.target_firmware && s.last_firmware !== s.target_firmware && (
-                    <span
-                      className="material-symbols-outlined"
-                      title="Ainda não recebeu a versão alvo — aguarda próximo ingest do device"
-                    >
-                      schedule
-                    </span>
-                  )}
-                </span>
-              </td>
-              <td>
-                <span className="firmware-target">
-                  <select
-                    value={s.target_firmware ?? ''}
-                    onChange={(e) => patch(s, { target_firmware: e.target.value || null })}
-                  >
-                    <option value="">(latest)</option>
-                    {firmwares.map((f) => (
-                      <option key={f.version} value={f.version}>
-                        {f.version}
+                    <option value="">(não reivindicado)</option>
+                    {clients.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}
                       </option>
                     ))}
                   </select>
-                  {s.client_id !== null && (
-                    <button
-                      className="icon-btn"
-                      title="Aplicar esta versão a todos os sensores deste cliente"
-                      onClick={() => applyToClient(s, s.target_firmware)}
-                    >
-                      <span className="material-symbols-outlined">groups</span>
-                    </button>
-                  )}
                 </span>
-              </td>
-              <td>
-                <span className="row-actions">
-                  {s.client_id !== null && (
+              </div>
+              <div className="sensor-field">
+                <span className="sensor-field-label">Temp min/max</span>
+                <span className="sensor-field-value">
+                  <span className="range-inputs">
+                    <input
+                      type="number"
+                      defaultValue={s.temp_min ?? ''}
+                      onBlur={(e) => patch(s, { temp_min: numberOrNull(e.target.value) })}
+                    />
+                    <span>–</span>
+                    <input
+                      type="number"
+                      defaultValue={s.temp_max ?? ''}
+                      onBlur={(e) => patch(s, { temp_max: numberOrNull(e.target.value) })}
+                    />
+                  </span>
+                </span>
+              </div>
+              <div className="sensor-field">
+                <span className="sensor-field-label">Hum min/max</span>
+                <span className="sensor-field-value">
+                  <span className="range-inputs">
+                    <input
+                      type="number"
+                      defaultValue={s.hum_min ?? ''}
+                      onBlur={(e) => patch(s, { hum_min: numberOrNull(e.target.value) })}
+                    />
+                    <span>–</span>
+                    <input
+                      type="number"
+                      defaultValue={s.hum_max ?? ''}
+                      onBlur={(e) => patch(s, { hum_max: numberOrNull(e.target.value) })}
+                    />
+                  </span>
+                </span>
+              </div>
+              <div className="sensor-field">
+                <span className="sensor-field-label">Calibragem</span>
+                <span className="sensor-field-value">
+                  <span className="calib-cell">
+                    <span className="calib-value">
+                      {s.temp_offset ? `${s.temp_offset > 0 ? '+' : ''}${s.temp_offset}°C` : '—'}
+                    </span>
                     <button
                       className="icon-btn"
-                      title="Testar dispositivo"
-                      onClick={() => runMutation(() => api.post(`/api/sensors/${s.id}/test`, {}), 'Teste enviado.')}
+                      title="Calibrar"
+                      aria-label="Calibrar"
+                      onClick={() => {
+                        setCalibrating(s.id);
+                        setSelected(null);
+                      }}
                     >
-                      <span className="material-symbols-outlined">bolt</span>
+                      <span className="material-symbols-outlined">tune</span>
                     </button>
-                  )}
+                  </span>
+                </span>
+              </div>
+              <div className="sensor-field">
+                <span className="sensor-field-label">Teste auto</span>
+                <span className="sensor-field-value">
+                  <span className="sched-cell">
+                    <select
+                      value={s.test_schedule_dow ?? ''}
+                      onChange={(e) => patch(s, { test_schedule_dow: e.target.value || null })}
+                    >
+                      <option value="">(padrão)</option>
+                      <option value="0">domingo</option>
+                      <option value="1">segunda</option>
+                      <option value="2">terça</option>
+                      <option value="3">quarta</option>
+                      <option value="4">quinta</option>
+                      <option value="5">sexta</option>
+                      <option value="6">sábado</option>
+                    </select>
+                    <input
+                      type="time"
+                      value={s.test_schedule_time ?? ''}
+                      onChange={(e) => patch(s, { test_schedule_time: e.target.value || null })}
+                    />
+                  </span>
+                </span>
+              </div>
+              <div className="sensor-field">
+                <span className="sensor-field-label">Firmware</span>
+                <span className="sensor-field-value">
+                  <span className="firmware-current">
+                    {s.last_firmware ?? '—'}
+                    {s.target_firmware && s.last_firmware !== s.target_firmware && (
+                      <span
+                        className="material-symbols-outlined"
+                        title="Ainda não recebeu a versão alvo — aguarda próximo ingest do device"
+                      >
+                        schedule
+                      </span>
+                    )}
+                  </span>
+                </span>
+              </div>
+              <div className="sensor-field">
+                <span className="sensor-field-label">Firmware alvo</span>
+                <span className="sensor-field-value">
+                  <span className="firmware-target">
+                    <select
+                      value={s.target_firmware ?? ''}
+                      onChange={(e) => patch(s, { target_firmware: e.target.value || null })}
+                    >
+                      <option value="">(latest)</option>
+                      {firmwares.map((f) => (
+                        <option key={f.version} value={f.version}>
+                          {f.version}
+                        </option>
+                      ))}
+                    </select>
+                    {s.client_id !== null && (
+                      <button
+                        className="icon-btn"
+                        title="Aplicar esta versão a todos os sensores deste cliente"
+                        aria-label="Aplicar esta versão a todos os sensores deste cliente"
+                        onClick={() => applyToClient(s, s.target_firmware)}
+                      >
+                        <span className="material-symbols-outlined">groups</span>
+                      </button>
+                    )}
+                  </span>
+                </span>
+              </div>
+            </div>
+
+            <div className="device-card-footer" style={{ justifyContent: 'flex-end' }}>
+              <span className="row-actions">
+                {s.client_id !== null && (
                   <button
                     className="icon-btn"
-                    title="Gráfico"
-                    onClick={() => {
-                      setSelected(s.id);
-                      setCalibrating(null);
-                    }}
+                    title="Testar dispositivo"
+                    aria-label="Testar dispositivo"
+                    onClick={() => runMutation(() => api.post(`/api/sensors/${s.id}/test`, {}), 'Teste enviado.')}
                   >
-                    <span className="material-symbols-outlined">monitoring</span>
+                    <span className="material-symbols-outlined">bolt</span>
                   </button>
-                  <button className="icon-btn danger" title="Remover" onClick={() => remove(s)}>
-                    <span className="material-symbols-outlined">delete</span>
-                  </button>
-                </span>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+                )}
+                <button
+                  className="icon-btn"
+                  title="Gráfico"
+                  aria-label="Gráfico"
+                  onClick={() => {
+                    setSelected(s.id);
+                    setCalibrating(null);
+                  }}
+                >
+                  <span className="material-symbols-outlined">monitoring</span>
+                </button>
+                <button className="icon-btn danger" title="Remover" aria-label="Remover" onClick={() => remove(s)}>
+                  <span className="material-symbols-outlined">delete</span>
+                </button>
+              </span>
+            </div>
+          </div>
+        ))}
+      </div>
 
       {selected !== null && (
         <div className="card" style={{ marginTop: '1rem' }}>
