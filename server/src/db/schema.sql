@@ -29,6 +29,9 @@ ALTER TABLE sensors ADD COLUMN IF NOT EXISTS local TEXT;
 -- Ajuste fixo somado à leitura crua na ingestão, pra compensar erro sistemático do sensor
 -- físico — calculado pelo wizard de calibragem (painel > Sensores), não editado à mão.
 ALTER TABLE sensors ADD COLUMN IF NOT EXISTS temp_offset NUMERIC NOT NULL DEFAULT 0;
+-- Último reset_reason já notificado (ver ingest.ts) — evita reenviar o alerta de reboot a
+-- cada ingest, já que o motivo fica constante durante todo o boot atual do device.
+ALTER TABLE sensors ADD COLUMN IF NOT EXISTS last_reset_reason TEXT;
 
 CREATE TABLE IF NOT EXISTS contacts (
   id SERIAL PRIMARY KEY,

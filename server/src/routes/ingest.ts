@@ -31,11 +31,14 @@ export async function ingestRoutes(app: FastifyInstance): Promise<void> {
     const sensor = await getSensorByToken(token);
     if (!sensor) throw Object.assign(new Error('token inválido'), { statusCode: 401 });
 
-    // Manda em todo ingest (não só o 1º pós-boot) — reason é constante durante o boot atual,
-    // então é redundante mas dá visibilidade sem precisar rastrear "1º envio" no firmware.
-    if (req.body.reset_reason) {
+    // reset_reason vem em todo ingest (constante durante o boot atual) — só notifica quando
+    // muda em relação ao último já registrado, senão vira spam a cada ingest (ex. a cada 20s).
+    // ponytail: dedupe por string igual; um 2º reboot com o MESMO motivo em sequência não
+    // gera novo alerta — se isso importar, trocar por um contador/uptime do device.
+    if (req.body.reset_reason && req.body.reset_reason !== sensor.last_reset_reason) {
       req.log.info({ sensor: sensor.name, reset_reason: req.body.reset_reason }, 'device reset reason');
       await notifyAdminsReboot(sensor, req.body.reset_reason);
+      await updateSensor(sensor.id, { last_reset_reason: req.body.reset_reason });
     }
 
     const readings = req.body?.readings ?? [];
