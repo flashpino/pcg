@@ -22,6 +22,7 @@ interface Sensor {
   offline_after_seconds: number;
   target_firmware: string | null;
   last_firmware: string | null;
+  last_variant: string | null;
   last_seen_at: string | null;
   test_schedule_dow: string | null;
   test_schedule_time: string | null;
@@ -341,6 +342,7 @@ export function SensorsPage() {
                 <span className="sensor-field-value">
                   <span className="firmware-current">
                     {s.last_firmware ?? '—'}
+                    {s.last_variant && ` (${s.last_variant})`}
                     {s.target_firmware && s.last_firmware !== s.target_firmware && (
                       <span
                         className="material-symbols-outlined"

@@ -6,6 +6,7 @@ import { flushInflux, writeReadings, type Reading } from '../services/influx.js'
 interface IngestBody {
   readings: Array<{ temp: number; hum: number; rssi: number; ago_ms: number }>;
   fw: string;
+  variant?: string;
   device_name?: string;
   reset_reason?: string;
 }
@@ -58,7 +59,11 @@ export async function ingestRoutes(app: FastifyInstance): Promise<void> {
       throw Object.assign(new Error('falha ao escrever no influx'), { statusCode: 500, cause: err });
     }
 
-    await updateSensor(sensor.id, { last_seen_at: new Date().toISOString(), last_firmware: req.body.fw });
+    await updateSensor(sensor.id, {
+      last_seen_at: new Date().toISOString(),
+      last_firmware: req.body.fw,
+      ...(req.body.variant ? { last_variant: req.body.variant } : {}),
+    });
 
     // Reading mais recente = menor ago_ms (o device manda em ordem, mas não assumir sem checar).
     const latest = calibrated.reduce((a, b) => (a.ago_ms <= b.ago_ms ? a : b));

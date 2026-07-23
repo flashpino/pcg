@@ -19,6 +19,7 @@ function sensor(overrides: Partial<Sensor>): Sensor {
     target_firmware: null,
     last_seen_at: null,
     last_firmware: null,
+    last_variant: null,
     local: null,
     last_reset_reason: null,
     test_schedule_dow: null,

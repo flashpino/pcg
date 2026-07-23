@@ -416,13 +416,20 @@ static void onPinBtn(lv_event_t* e) {
   lv_label_set_text(pinDisplay, masked.length() ? masked.c_str() : "digite o PIN");
 }
 
+static void onPinBack(lv_event_t* e) {
+  pinBuffer = "";
+  showDashboard();
+}
+
 static void buildPinScreen() {
   scrPin = lv_obj_create(NULL);
+  makeBackButton(scrPin, onPinBack);
   pinDisplay = lv_label_create(scrPin);
   lv_label_set_text(pinDisplay, "digite o PIN");
   lv_obj_align(pinDisplay, LV_ALIGN_TOP_MID, 0, 20);
 
   lv_obj_t* btnm = lv_btnmatrix_create(scrPin);
+  lv_obj_set_style_text_font(btnm, &lv_font_montserrat_20, 0);
   lv_btnmatrix_set_map(btnm, PIN_MAP);
   lv_obj_set_size(btnm, 200, 160);
   lv_obj_align(btnm, LV_ALIGN_BOTTOM_MID, 0, -10);
@@ -437,7 +444,14 @@ static void showPin(void (*onSuccess)()) {
 }
 
 // --- Menu de configurações -----------------------------------------------------------------
+// Calibrar/Reset de fábrica ficam ocultos por padrão — cliente encostava sem querer e
+// disparava. Só aparecem com toque-e-segure numa área vazia da lista (onMenuLongPress).
+static lv_obj_t* btnCalibrate;
+static lv_obj_t* btnFactoryReset;
+
 static void onMenuBack(lv_event_t* e) {
+  lv_obj_add_flag(btnCalibrate, LV_OBJ_FLAG_HIDDEN);
+  lv_obj_add_flag(btnFactoryReset, LV_OBJ_FLAG_HIDDEN);
   showDashboard();
 }
 
@@ -486,6 +500,17 @@ static void onMenuFactoryReset(lv_event_t* e) {
   ESP.restart();
 }
 
+static void onMenuLongPress(lv_event_t* e) {
+  bool hidden = lv_obj_has_flag(btnCalibrate, LV_OBJ_FLAG_HIDDEN);
+  if (hidden) {
+    lv_obj_clear_flag(btnCalibrate, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_clear_flag(btnFactoryReset, LV_OBJ_FLAG_HIDDEN);
+  } else {
+    lv_obj_add_flag(btnCalibrate, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(btnFactoryReset, LV_OBJ_FLAG_HIDDEN);
+  }
+}
+
 static void buildMenu() {
   scrMenu = lv_obj_create(NULL);
   makeBackButton(scrMenu, onMenuBack);
@@ -493,16 +518,23 @@ static void buildMenu() {
   lv_obj_t* list = lv_list_create(scrMenu);
   lv_obj_set_size(list, SCREEN_W - 20, SCREEN_H - 40);
   lv_obj_align(list, LV_ALIGN_BOTTOM_MID, 0, -4);
+  lv_obj_add_event_cb(list, onMenuLongPress, LV_EVENT_LONG_PRESSED, nullptr);
 
   lv_obj_add_event_cb(lv_list_add_btn(list, LV_SYMBOL_WIFI, "Redes WiFi"), onMenuWifi, LV_EVENT_CLICKED, nullptr);
   lv_obj_add_event_cb(lv_list_add_btn(list, LV_SYMBOL_BELL, "Testar dispositivo"), onMenuTestDevice, LV_EVENT_CLICKED, nullptr);
   lv_obj_add_event_cb(lv_list_add_btn(list, LV_SYMBOL_EDIT, "Nome do dispositivo"), onMenuDeviceName, LV_EVENT_CLICKED, nullptr);
   lv_obj_add_event_cb(lv_list_add_btn(list, LV_SYMBOL_SETTINGS, "Configurar IP"), onMenuIp, LV_EVENT_CLICKED, nullptr);
   lv_obj_add_event_cb(lv_list_add_btn(list, LV_SYMBOL_KEYBOARD, "Trocar PIN"), onMenuChangePin, LV_EVENT_CLICKED, nullptr);
-  lv_obj_add_event_cb(lv_list_add_btn(list, LV_SYMBOL_EYE_OPEN, "Calibrar touch"), onMenuCalibrate, LV_EVENT_CLICKED, nullptr);
   lv_obj_add_event_cb(lv_list_add_btn(list, LV_SYMBOL_SETTINGS, "Offset temperatura"), onMenuOffset, LV_EVENT_CLICKED, nullptr);
   lv_obj_add_event_cb(lv_list_add_btn(list, LV_SYMBOL_REFRESH, "Reiniciar"), onMenuRestart, LV_EVENT_CLICKED, nullptr);
-  lv_obj_add_event_cb(lv_list_add_btn(list, LV_SYMBOL_WARNING, "Reset de fabrica"), onMenuFactoryReset, LV_EVENT_CLICKED, nullptr);
+
+  btnCalibrate = lv_list_add_btn(list, LV_SYMBOL_EYE_OPEN, "Calibrar touch");
+  lv_obj_add_event_cb(btnCalibrate, onMenuCalibrate, LV_EVENT_CLICKED, nullptr);
+  lv_obj_add_flag(btnCalibrate, LV_OBJ_FLAG_HIDDEN);
+
+  btnFactoryReset = lv_list_add_btn(list, LV_SYMBOL_WARNING, "Reset de fabrica");
+  lv_obj_add_event_cb(btnFactoryReset, onMenuFactoryReset, LV_EVENT_CLICKED, nullptr);
+  lv_obj_add_flag(btnFactoryReset, LV_OBJ_FLAG_HIDDEN);
 }
 
 static void showMenu() {
@@ -580,6 +612,7 @@ static void onTextInputReady(lv_event_t* e) {
 
 static void buildTextInputScreen() {
   scrTextInput = lv_obj_create(NULL);
+  makeBackButton(scrTextInput, onTextInputCancel);
   textInputTitle = lv_label_create(scrTextInput);
   lv_obj_align(textInputTitle, LV_ALIGN_TOP_MID, 0, 4);
 
@@ -589,6 +622,7 @@ static void buildTextInputScreen() {
   lv_textarea_set_one_line(textInputArea, true);
 
   lv_obj_t* kb = lv_keyboard_create(scrTextInput);
+  lv_obj_set_style_text_font(kb, &lv_font_montserrat_20, 0);
   lv_keyboard_set_textarea(kb, textInputArea);
   lv_obj_add_event_cb(kb, onTextInputReady, LV_EVENT_READY, nullptr);
   lv_obj_add_event_cb(kb, onTextInputCancel, LV_EVENT_CANCEL, nullptr);
@@ -680,10 +714,10 @@ static void buildNetInfoScreen() {
 static void showNetInfo() {
   char buf[350];
   snprintf(buf, sizeof(buf),
-           "SSID: %s\nIP: %s\nMascara: %s\nGateway: %s\nDNS: %s\nMAC: %s\nRSSI: %d dBm\nFW: %s\nUptime: %lus\nSensor: %s",
+           "SSID: %s\nIP: %s\nMascara: %s\nGateway: %s\nDNS: %s\nMAC: %s\nRSSI: %d dBm\nFW: %s (%s)\nUptime: %lus\nSensor: %s",
            WiFi.SSID().c_str(), WiFi.localIP().toString().c_str(), WiFi.subnetMask().toString().c_str(),
            WiFi.gatewayIP().toString().c_str(), WiFi.dnsIP().toString().c_str(), WiFi.macAddress().c_str(),
-           WiFi.RSSI(), FW_VERSION, millis() / 1000, lastNetEvent.sensorStale ? "sem resposta" : "OK");
+           WiFi.RSSI(), FW_VERSION, FW_VARIANT, millis() / 1000, lastNetEvent.sensorStale ? "sem resposta" : "OK");
   lv_label_set_text(netInfoLabel, buf);
   lv_scr_load(scrNetInfo);
 }

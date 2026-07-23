@@ -47,10 +47,10 @@ String loadDeviceName() {
     String name = prefs.getString("device_name", "");
     if (name.length() > 0) return name;
   }
-  // default: "esp32-" + últimos 4 dígitos hex do MAC (sem UI ainda pra trocar — Task 13)
+  // default: "precog_" + últimos 4 dígitos hex do MAC (sem UI ainda pra trocar — Task 13)
   String mac = WiFi.macAddress();
   mac.replace(":", "");
-  return "esp32-" + mac.substring(mac.length() - 4);
+  return "precog_" + mac.substring(mac.length() - 4);
 }
 
 void saveDeviceName(const String& name) {

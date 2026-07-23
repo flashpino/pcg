@@ -112,6 +112,7 @@ export interface Sensor {
   target_firmware: string | null;
   last_seen_at: string | null;
   last_firmware: string | null;
+  last_variant: string | null;
   local: string | null;
   last_reset_reason: string | null;
   test_schedule_dow: string | null;
@@ -156,6 +157,7 @@ export interface SensorUpdate {
   target_firmware?: string | null;
   last_seen_at?: string;
   last_firmware?: string;
+  last_variant?: string;
   local?: string | null;
   last_reset_reason?: string | null;
   test_schedule_dow?: string | null;

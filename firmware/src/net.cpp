@@ -252,6 +252,7 @@ static IngestResult sendIngest(const Reading* batch, size_t count) {
     o["ago_ms"] = now - batch[i].ts_ms;
   }
   doc["fw"] = FW_VERSION;
+  doc["variant"] = FW_VARIANT;
   doc["device_name"] = storage::loadDeviceName();
   doc["reset_reason"] = resetReasonStr();
 
