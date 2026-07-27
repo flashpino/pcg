@@ -444,14 +444,7 @@ static void showPin(void (*onSuccess)()) {
 }
 
 // --- Menu de configurações -----------------------------------------------------------------
-// Calibrar/Reset de fábrica ficam ocultos por padrão — cliente encostava sem querer e
-// disparava. Só aparecem com toque-e-segure numa área vazia da lista (onMenuLongPress).
-static lv_obj_t* btnCalibrate;
-static lv_obj_t* btnFactoryReset;
-
 static void onMenuBack(lv_event_t* e) {
-  lv_obj_add_flag(btnCalibrate, LV_OBJ_FLAG_HIDDEN);
-  lv_obj_add_flag(btnFactoryReset, LV_OBJ_FLAG_HIDDEN);
   showDashboard();
 }
 
@@ -478,10 +471,6 @@ static void onMenuChangePin(lv_event_t* e) {
   });
 }
 
-static void onMenuCalibrate(lv_event_t* e) {
-  showCalibration();
-}
-
 static void onMenuOffset(lv_event_t* e) {
   char buf[16];
   snprintf(buf, sizeof(buf), "%.1f", storage::loadTempOffset());
@@ -495,22 +484,6 @@ static void onMenuRestart(lv_event_t* e) {
   ESP.restart();
 }
 
-static void onMenuFactoryReset(lv_event_t* e) {
-  storage::factoryReset();
-  ESP.restart();
-}
-
-static void onMenuLongPress(lv_event_t* e) {
-  bool hidden = lv_obj_has_flag(btnCalibrate, LV_OBJ_FLAG_HIDDEN);
-  if (hidden) {
-    lv_obj_clear_flag(btnCalibrate, LV_OBJ_FLAG_HIDDEN);
-    lv_obj_clear_flag(btnFactoryReset, LV_OBJ_FLAG_HIDDEN);
-  } else {
-    lv_obj_add_flag(btnCalibrate, LV_OBJ_FLAG_HIDDEN);
-    lv_obj_add_flag(btnFactoryReset, LV_OBJ_FLAG_HIDDEN);
-  }
-}
-
 static void buildMenu() {
   scrMenu = lv_obj_create(NULL);
   makeBackButton(scrMenu, onMenuBack);
@@ -518,7 +491,6 @@ static void buildMenu() {
   lv_obj_t* list = lv_list_create(scrMenu);
   lv_obj_set_size(list, SCREEN_W - 20, SCREEN_H - 40);
   lv_obj_align(list, LV_ALIGN_BOTTOM_MID, 0, -4);
-  lv_obj_add_event_cb(list, onMenuLongPress, LV_EVENT_LONG_PRESSED, nullptr);
 
   lv_obj_add_event_cb(lv_list_add_btn(list, LV_SYMBOL_WIFI, "Redes WiFi"), onMenuWifi, LV_EVENT_CLICKED, nullptr);
   lv_obj_add_event_cb(lv_list_add_btn(list, LV_SYMBOL_BELL, "Testar dispositivo"), onMenuTestDevice, LV_EVENT_CLICKED, nullptr);
@@ -527,14 +499,6 @@ static void buildMenu() {
   lv_obj_add_event_cb(lv_list_add_btn(list, LV_SYMBOL_KEYBOARD, "Trocar PIN"), onMenuChangePin, LV_EVENT_CLICKED, nullptr);
   lv_obj_add_event_cb(lv_list_add_btn(list, LV_SYMBOL_SETTINGS, "Offset temperatura"), onMenuOffset, LV_EVENT_CLICKED, nullptr);
   lv_obj_add_event_cb(lv_list_add_btn(list, LV_SYMBOL_REFRESH, "Reiniciar"), onMenuRestart, LV_EVENT_CLICKED, nullptr);
-
-  btnCalibrate = lv_list_add_btn(list, LV_SYMBOL_EYE_OPEN, "Calibrar touch");
-  lv_obj_add_event_cb(btnCalibrate, onMenuCalibrate, LV_EVENT_CLICKED, nullptr);
-  lv_obj_add_flag(btnCalibrate, LV_OBJ_FLAG_HIDDEN);
-
-  btnFactoryReset = lv_list_add_btn(list, LV_SYMBOL_WARNING, "Reset de fabrica");
-  lv_obj_add_event_cb(btnFactoryReset, onMenuFactoryReset, LV_EVENT_CLICKED, nullptr);
-  lv_obj_add_flag(btnFactoryReset, LV_OBJ_FLAG_HIDDEN);
 }
 
 static void showMenu() {
@@ -622,7 +586,9 @@ static void buildTextInputScreen() {
   lv_textarea_set_one_line(textInputArea, true);
 
   lv_obj_t* kb = lv_keyboard_create(scrTextInput);
-  lv_obj_set_style_text_font(kb, &lv_font_montserrat_20, 0);
+  lv_obj_set_style_text_font(kb, &lv_font_montserrat_28, 0);
+  lv_obj_set_size(kb, SCREEN_W, SCREEN_H - 56);
+  lv_obj_align(kb, LV_ALIGN_BOTTOM_MID, 0, 0);
   lv_keyboard_set_textarea(kb, textInputArea);
   lv_obj_add_event_cb(kb, onTextInputReady, LV_EVENT_READY, nullptr);
   lv_obj_add_event_cb(kb, onTextInputCancel, LV_EVENT_CANCEL, nullptr);
@@ -697,28 +663,86 @@ static void showIpConfig() {
   lv_scr_load(scrIpConfig);
 }
 
-// --- Info de rede (só leitura, sem PIN) ---------------------------------------------------------
+// --- Info de rede + manutenção (calibração/reset) -----------------------------------------------
 static lv_obj_t* netInfoLabel;
+static lv_obj_t* netInfoFwLabel;  // label separado da versão FW — clicável p/ revelar manutenção
+static lv_obj_t* btnNetInfoCalibrate;
+static lv_obj_t* btnNetInfoFactoryReset;
 
 static void onNetInfoBack(lv_event_t* e) {
+  lv_obj_add_flag(btnNetInfoCalibrate, LV_OBJ_FLAG_HIDDEN);
+  lv_obj_add_flag(btnNetInfoFactoryReset, LV_OBJ_FLAG_HIDDEN);
   showDashboard();
+}
+
+static void onNetInfoFwClicked(lv_event_t* e) {
+  bool hidden = lv_obj_has_flag(btnNetInfoCalibrate, LV_OBJ_FLAG_HIDDEN);
+  if (hidden) {
+    lv_obj_clear_flag(btnNetInfoCalibrate, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_clear_flag(btnNetInfoFactoryReset, LV_OBJ_FLAG_HIDDEN);
+  } else {
+    lv_obj_add_flag(btnNetInfoCalibrate, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(btnNetInfoFactoryReset, LV_OBJ_FLAG_HIDDEN);
+  }
+}
+
+static void onNetInfoCalibrate(lv_event_t* e) {
+  showCalibration();
+}
+
+static void onNetInfoFactoryReset(lv_event_t* e) {
+  storage::factoryReset();
+  ESP.restart();
 }
 
 static void buildNetInfoScreen() {
   scrNetInfo = lv_obj_create(NULL);
   makeBackButton(scrNetInfo, onNetInfoBack);
+
   netInfoLabel = lv_label_create(scrNetInfo);
   lv_obj_align(netInfoLabel, LV_ALIGN_TOP_LEFT, 8, 32);
+
+  // Label de FW separado e clicável — toque nele revela calibração/reset
+  netInfoFwLabel = lv_label_create(scrNetInfo);
+  lv_obj_align(netInfoFwLabel, LV_ALIGN_BOTTOM_MID, 0, -40);
+  lv_obj_add_flag(netInfoFwLabel, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_add_event_cb(netInfoFwLabel, onNetInfoFwClicked, LV_EVENT_CLICKED, nullptr);
+
+  // Botões ocultos — só aparecem ao clicar na versão do firmware
+  btnNetInfoCalibrate = lv_btn_create(scrNetInfo);
+  lv_obj_align(btnNetInfoCalibrate, LV_ALIGN_BOTTOM_LEFT, 8, -8);
+  lv_obj_t* lblCalib = lv_label_create(btnNetInfoCalibrate);
+  lv_label_set_text(lblCalib, LV_SYMBOL_EYE_OPEN " Calibrar");
+  lv_obj_add_event_cb(btnNetInfoCalibrate, onNetInfoCalibrate, LV_EVENT_CLICKED, nullptr);
+  lv_obj_add_flag(btnNetInfoCalibrate, LV_OBJ_FLAG_HIDDEN);
+
+  btnNetInfoFactoryReset = lv_btn_create(scrNetInfo);
+  lv_obj_align(btnNetInfoFactoryReset, LV_ALIGN_BOTTOM_RIGHT, -8, -8);
+  lv_obj_set_style_bg_color(btnNetInfoFactoryReset, lv_palette_main(LV_PALETTE_RED), 0);
+  lv_obj_t* lblReset = lv_label_create(btnNetInfoFactoryReset);
+  lv_label_set_text(lblReset, LV_SYMBOL_WARNING " Reset");
+  lv_obj_add_event_cb(btnNetInfoFactoryReset, onNetInfoFactoryReset, LV_EVENT_CLICKED, nullptr);
+  lv_obj_add_flag(btnNetInfoFactoryReset, LV_OBJ_FLAG_HIDDEN);
 }
 
 static void showNetInfo() {
-  char buf[350];
+  // Esconde os botões de manutenção ao entrar
+  lv_obj_add_flag(btnNetInfoCalibrate, LV_OBJ_FLAG_HIDDEN);
+  lv_obj_add_flag(btnNetInfoFactoryReset, LV_OBJ_FLAG_HIDDEN);
+
+  char buf[400];
   snprintf(buf, sizeof(buf),
-           "SSID: %s\nIP: %s\nMascara: %s\nGateway: %s\nDNS: %s\nMAC: %s\nRSSI: %d dBm\nFW: %s (%s)\nUptime: %lus\nSensor: %s",
-           WiFi.SSID().c_str(), WiFi.localIP().toString().c_str(), WiFi.subnetMask().toString().c_str(),
-           WiFi.gatewayIP().toString().c_str(), WiFi.dnsIP().toString().c_str(), WiFi.macAddress().c_str(),
-           WiFi.RSSI(), FW_VERSION, FW_VARIANT, millis() / 1000, lastNetEvent.sensorStale ? "sem resposta" : "OK");
+           "Nome: %s\nSSID: %s\nIP: %s\nMascara: %s\nGateway: %s\nDNS: %s\nMAC: %s\nRSSI: %d dBm\nUptime: %lus\nSensor: %s",
+           storage::loadDeviceName().c_str(), WiFi.SSID().c_str(), WiFi.localIP().toString().c_str(),
+           WiFi.subnetMask().toString().c_str(), WiFi.gatewayIP().toString().c_str(), WiFi.dnsIP().toString().c_str(),
+           WiFi.macAddress().c_str(), WiFi.RSSI(), millis() / 1000,
+           lastNetEvent.sensorStale ? "sem resposta" : "OK");
   lv_label_set_text(netInfoLabel, buf);
+
+  char fwBuf[64];
+  snprintf(fwBuf, sizeof(fwBuf), "FW: %s (%s)", FW_VERSION, FW_VARIANT);
+  lv_label_set_text(netInfoFwLabel, fwBuf);
+
   lv_scr_load(scrNetInfo);
 }
 

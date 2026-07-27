@@ -17,10 +17,10 @@
 #define LV_USE_LOG 0
 #define LV_USE_PERF_MONITOR 0
 
-// 14 (padrão), 20 (teclado — 14 ficava ilegível nos botões) e 48 (números do dashboard).
-// 32 nunca foi referenciada e custava Flash à toa.
+// 14 (padrão), 20 (menus), 28 (teclado — letras maiores pra digitar com o dedo) e 48 (números do dashboard).
 #define LV_FONT_MONTSERRAT_14 1
 #define LV_FONT_MONTSERRAT_20 1
+#define LV_FONT_MONTSERRAT_28 1
 #define LV_FONT_MONTSERRAT_48 1
 #define LV_FONT_DEFAULT &lv_font_montserrat_14
 
