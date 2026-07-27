@@ -595,23 +595,40 @@ static const lv_btnmatrix_ctrl_t kKbCtrl[] = {
     LV_KEYBOARD_CTRL_BTN_FLAGS | 2, 1, 1, 1, 1, 1, 1, 1, LV_KEYBOARD_CTRL_BTN_FLAGS | 2,
     LV_KEYBOARD_CTRL_BTN_FLAGS | 2, 6, LV_KEYBOARD_CTRL_BTN_FLAGS | 2};
 
+// Modo "1#" (pontuação) — sem as setas < > do padrão LVGL: elas só movem o cursor
+// dentro do campo de uma linha, não têm efeito visível e o usuário achava quebrado.
+static const char* kKbMapSpec[] = {
+    "1", "2", "3", "4", "5", "6", "7", "8", "9", "0", LV_SYMBOL_BACKSPACE, "\n",
+    "@", "#", "$", "%", "&", "*", "-", "+", "(", ")", "\n",
+    "!", "\"", "'", ":", ";", "/", "?", "_", ",", ".", "\n",
+    "ABC", " ", LV_SYMBOL_OK, ""};
+static const lv_btnmatrix_ctrl_t kKbCtrlSpec[] = {
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, LV_KEYBOARD_CTRL_BTN_FLAGS | 1,
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+    LV_KEYBOARD_CTRL_BTN_FLAGS | 2, 6, LV_KEYBOARD_CTRL_BTN_FLAGS | 2};
+
 static void buildTextInputScreen() {
   scrTextInput = lv_obj_create(NULL);
   makeBackButton(scrTextInput, onTextInputCancel);
   textInputTitle = lv_label_create(scrTextInput);
   lv_obj_align(textInputTitle, LV_ALIGN_TOP_MID, 0, 4);
 
+  // Header (voltar + título) usa a mesma faixa de 40px que as outras telas do app
+  // (buildMenu, buildWifiListScreen etc.) reservam antes do conteúdo — com 24px o
+  // teclado grande acabava cobrindo o botão "voltar".
   textInputArea = lv_textarea_create(scrTextInput);
   lv_obj_set_size(textInputArea, SCREEN_W - 20, 30);
-  lv_obj_align(textInputArea, LV_ALIGN_TOP_MID, 0, 24);
+  lv_obj_align(textInputArea, LV_ALIGN_TOP_MID, 0, 40);
   lv_textarea_set_one_line(textInputArea, true);
 
   lv_obj_t* kb = lv_keyboard_create(scrTextInput);
   lv_obj_set_style_text_font(kb, &lv_font_montserrat_28, 0);
-  lv_obj_set_size(kb, SCREEN_W, SCREEN_H - 56);
+  lv_obj_set_size(kb, SCREEN_W, SCREEN_H - 74);
   lv_obj_align(kb, LV_ALIGN_BOTTOM_MID, 0, 0);
   lv_keyboard_set_map(kb, LV_KEYBOARD_MODE_TEXT_LOWER, kKbMapLower, kKbCtrl);
   lv_keyboard_set_map(kb, LV_KEYBOARD_MODE_TEXT_UPPER, kKbMapUpper, kKbCtrl);
+  lv_keyboard_set_map(kb, LV_KEYBOARD_MODE_SPECIAL, kKbMapSpec, kKbCtrlSpec);
   lv_keyboard_set_textarea(kb, textInputArea);
   lv_obj_add_event_cb(kb, onTextInputReady, LV_EVENT_READY, nullptr);
   lv_obj_add_event_cb(kb, onTextInputCancel, LV_EVENT_CANCEL, nullptr);
