@@ -54,7 +54,7 @@ const DEFAULT_MESSAGE_TEMPLATES: Record<string, { whatsapp: string; voice?: stri
   // ligação de voz do contato do mesmo jeito que o alerta real faz, não só o WhatsApp.
   test: {
     whatsapp: 'Teste PCG — {{$sensor}} ({{$local}}): temperatura atual {{$temperatura}}°C ({{$quando}}).',
-    voice: 'Atenção. A temperatura de {{$sensor}} está fora do limite. Valor atual: {{$temperatura}} graus.',
+    voice: 'Atenção. Este é um teste do sistema de monitoramento de {{$local}}. Não é uma emergência.',
   },
   // Enviado por WhatsApp antes de qualquer teste (sensor ou contato) — avisa quem está inscrito
   // pra receber teste que a ligação que vem a seguir não é uma emergência real.
@@ -76,6 +76,12 @@ export async function seedMessageTemplates(): Promise<void> {
   // existir) ganham o texto padrão agora — só se o admin não tiver customizado (voice ainda NULL).
   await pool.query("UPDATE message_templates SET voice = $1 WHERE key = 'test' AND voice IS NULL", [
     DEFAULT_MESSAGE_TEMPLATES.test.voice,
+  ]);
+  // Backfill: quem já tinha o texto de voz antigo (falava o nome do sensor, texto de alerta real
+  // reaproveitado por engano) ganha o texto novo, que fala o local e deixa claro que é um teste.
+  await pool.query("UPDATE message_templates SET voice = $1 WHERE key = 'test' AND voice = $2", [
+    DEFAULT_MESSAGE_TEMPLATES.test.voice,
+    'Atenção. A temperatura de {{$sensor}} está fora do limite. Valor atual: {{$temperatura}} graus.',
   ]);
   // Backfill do texto de test_warning: só troca se ainda for exatamente o texto antigo (menção a
   // "CPD"), pra não sobrescrever customização feita pelo admin em Painel > Mensagens.

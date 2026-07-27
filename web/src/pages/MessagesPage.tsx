@@ -41,7 +41,7 @@ function TemplateForm({ tpl, onSaved }: { tpl: Template; onSaved: () => void }) 
   const [whatsapp, setWhatsapp] = useState(tpl.whatsapp);
   const [voice, setVoice] = useState(tpl.voice ?? '');
   const [status, setStatus] = useState<string | null>(null);
-  const hasVoice = tpl.key === 'temperature_fire'; // ligação é exclusiva de alerta de temperatura
+  const hasVoice = tpl.key === 'temperature_fire' || tpl.key === 'test'; // voz: alerta de temperatura e teste de dispositivo
 
   async function save(e: React.FormEvent) {
     e.preventDefault();
@@ -75,7 +75,7 @@ function TemplateForm({ tpl, onSaved }: { tpl: Template; onSaved: () => void }) 
       </label>
       {hasVoice && (
         <label>
-          <small>Ligação de voz (só disparo de temperatura)</small>
+          <small>Ligação de voz</small>
           <textarea className="tpl-code" rows={15} value={voice} onChange={(e) => setVoice(e.target.value)} />
         </label>
       )}
