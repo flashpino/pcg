@@ -19,7 +19,7 @@ CREATE TABLE IF NOT EXISTS sensors (
   hum_min NUMERIC, hum_max NUMERIC,        -- opcionais
   interval_seconds INT NOT NULL DEFAULT 60,
   offline_after_seconds INT NOT NULL DEFAULT 300,
-  target_firmware TEXT,                    -- versão OTA desejada (NULL = latest)
+  target_firmware TEXT,                    -- versão OTA desejada (NULL = não atualizar)
   last_seen_at TIMESTAMPTZ,
   last_firmware TEXT,
   created_at TIMESTAMPTZ DEFAULT now()

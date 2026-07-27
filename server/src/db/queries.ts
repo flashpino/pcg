@@ -492,10 +492,6 @@ export const listFirmwares = () =>
 export const getFirmwareByVersion = (version: string) =>
   pool.query<Firmware>('SELECT * FROM firmware WHERE version = $1', [version]).then((r) => r.rows[0]);
 
-// Resolve o alvo "(latest)" (target_firmware NULL) — a versão cadastrada mais recentemente.
-export const getLatestFirmware = () =>
-  pool.query<Firmware>('SELECT * FROM firmware ORDER BY created_at DESC LIMIT 1').then((r) => r.rows[0]);
-
 export const createFirmware = (version: string, filename: string, sha256: string) =>
   pool
     .query<Firmware>(

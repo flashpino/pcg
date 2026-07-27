@@ -124,7 +124,7 @@ export function SensorsPage() {
     const siblings = sensors.filter((s) => s.client_id === sensor.client_id && s.client_id !== null);
     return runMutation(
       () => Promise.all(siblings.map((s) => api.patch(`/api/sensors/${s.id}`, { target_firmware: version }))),
-      `Firmware ${version ?? '(latest)'} aplicado a ${siblings.length} sensor(es).`,
+      `Firmware ${version ?? '(não atualizar)'} aplicado a ${siblings.length} sensor(es).`,
     );
   }
 
@@ -368,7 +368,7 @@ export function SensorsPage() {
                       value={s.target_firmware ?? ''}
                       onChange={(e) => patch(s, { target_firmware: e.target.value || null })}
                     >
-                      <option value="">(latest)</option>
+                      <option value="">(não atualizar)</option>
                       {firmwares.map((f) => (
                         <option key={f.version} value={f.version}>
                           {f.version}
