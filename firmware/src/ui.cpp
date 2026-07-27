@@ -574,6 +574,25 @@ static void onTextInputReady(lv_event_t* e) {
   if (textInputSubmitCb) textInputSubmitCb(value);
 }
 
+// Layout enxuto (sem linha de números, pontuação ou setas do padrão LVGL) — só
+// QWERTYUIOP / ASDFGHJKL / shift+ZXCVBNM+backspace / 123+espaço+enter, pra bater
+// com o teclado de referência do usuário e caber com teclas grandes na tela de 240px.
+static const char* kKbMapLower[] = {
+    "q", "w", "e", "r", "t", "y", "u", "i", "o", "p", "\n",
+    "a", "s", "d", "f", "g", "h", "j", "k", "l", "\n",
+    "ABC", "z", "x", "c", "v", "b", "n", "m", LV_SYMBOL_BACKSPACE, "\n",
+    "1#", " ", "Enter", ""};
+static const char* kKbMapUpper[] = {
+    "Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P", "\n",
+    "A", "S", "D", "F", "G", "H", "J", "K", "L", "\n",
+    "abc", "Z", "X", "C", "V", "B", "N", "M", LV_SYMBOL_BACKSPACE, "\n",
+    "1#", " ", "Enter", ""};
+static const lv_btnmatrix_ctrl_t kKbCtrl[] = {
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1, 1, 1, 1,
+    LV_KEYBOARD_CTRL_BTN_FLAGS | 1, 1, 1, 1, 1, 1, 1, 1, LV_KEYBOARD_CTRL_BTN_FLAGS | 1,
+    LV_KEYBOARD_CTRL_BTN_FLAGS | 2, 6, LV_KEYBOARD_CTRL_BTN_FLAGS | 2};
+
 static void buildTextInputScreen() {
   scrTextInput = lv_obj_create(NULL);
   makeBackButton(scrTextInput, onTextInputCancel);
@@ -589,6 +608,8 @@ static void buildTextInputScreen() {
   lv_obj_set_style_text_font(kb, &lv_font_montserrat_28, 0);
   lv_obj_set_size(kb, SCREEN_W, SCREEN_H - 56);
   lv_obj_align(kb, LV_ALIGN_BOTTOM_MID, 0, 0);
+  lv_keyboard_set_map(kb, LV_KEYBOARD_MODE_TEXT_LOWER, kKbMapLower, kKbCtrl);
+  lv_keyboard_set_map(kb, LV_KEYBOARD_MODE_TEXT_UPPER, kKbMapUpper, kKbCtrl);
   lv_keyboard_set_textarea(kb, textInputArea);
   lv_obj_add_event_cb(kb, onTextInputReady, LV_EVENT_READY, nullptr);
   lv_obj_add_event_cb(kb, onTextInputCancel, LV_EVENT_CANCEL, nullptr);
