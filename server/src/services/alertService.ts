@@ -214,14 +214,19 @@ export async function evaluate(sensor: Sensor, reading: { temp: number; hum: num
 // firmware não manda nada quando o DHT22 trava, então "sem ingest há offline_after_seconds"
 // já é o sinal disponível), só que só no fire/resolve (sem re-notificar, pra não spammar o
 // time). Sem janela de horário/preferência — é alerta operacional, sempre entregue.
-async function notifyAdminsHardware(alert: Alert, kind: 'fire' | 'resolve', vars: Record<string, string | number>): Promise<void> {
-  const admins = await listAdminsWithPhone();
-  if (admins.length === 0) return;
-  const texts = await renderMessage(`hardware_${kind}`, vars);
-  for (const admin of admins) {
+// Caminho único de saída dos avisos de admin (hardware/reboot/firmware). Sempre chamado DEPOIS
+// do alerta já estar gravado: sem nenhum admin com telefone, o evento continua visível em
+// Alertas — antes ele sumia sem rastro e não dava pra distinguir "não disparou" de "não enviou".
+async function notifyAdmins(alert: Alert, whatsapp: string): Promise<void> {
+  for (const admin of await listAdminsWithPhone()) {
     const notification = await createAdminNotification(alert.id, admin.id, 'whatsapp');
-    await enqueueWhatsapp({ notificationId: notification.id, phone: admin.phone!, text: texts.whatsapp });
+    await enqueueWhatsapp({ notificationId: notification.id, phone: admin.phone!, text: whatsapp });
   }
+}
+
+async function notifyAdminsHardware(alert: Alert, kind: 'fire' | 'resolve', vars: Record<string, string | number>): Promise<void> {
+  const texts = await renderMessage(`hardware_${kind}`, vars);
+  await notifyAdmins(alert, texts.whatsapp);
 }
 
 // Rótulos pt-BR de esp_reset_reason() (ver resetReasonStr() no firmware) — "poweron" nunca
@@ -241,8 +246,6 @@ const RESET_REASON_LABELS: Record<string, string> = {
 // com telefone, sem janela de horário/preferência (mesmo critério de notifyAdminsHardware).
 export async function notifyAdminsReboot(sensor: Sensor, resetReason: string): Promise<void> {
   if (resetReason === 'poweron') return;
-  const admins = await listAdminsWithPhone();
-  if (admins.length === 0) return;
 
   const cliente = await clientNameOf(sensor);
   const quando = new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
@@ -255,27 +258,20 @@ export async function notifyAdminsReboot(sensor: Sensor, resetReason: string): P
   };
   const texts = await renderMessage('reboot_fire', vars);
   const alert = await createResolvedAlert(sensor.id, 'reboot', texts.whatsapp);
-  for (const admin of admins) {
-    const notification = await createAdminNotification(alert.id, admin.id, 'whatsapp');
-    await enqueueWhatsapp({ notificationId: notification.id, phone: admin.phone!, text: texts.whatsapp });
-  }
+  await notifyAdmins(alert, texts.whatsapp);
 }
 
-// Dispara quando o `fw` reportado no ingest muda em relação ao last_firmware anterior — cobre
-// tanto a atualização normal quanto o "force" (mesma versão de destino, reflash manual), já que
-// o request original não conseguia dizer se o OTA de fato aconteceu no device.
+// Dispara quando o `fw` reportado no ingest muda em relação ao last_firmware anterior — é o
+// único sinal confiável de que o OTA de fato pegou no device (o server só sabe que despachou).
+// ponytail: reflash da MESMA versão (force_ota) e OTA de um .bin sem FW_VERSION incrementado não
+// notificam — a string não muda. Se precisar cobrir isso, guardar o OTA despachado no sensor e
+// confirmar no ingest seguinte.
 export async function notifyAdminsFirmwareUpdate(sensor: Sensor, from: string, to: string): Promise<void> {
-  const admins = await listAdminsWithPhone();
-  if (admins.length === 0) return;
-
   const cliente = await clientNameOf(sensor);
   const vars = { sensor: sensor.name, cliente, local: sensor.local ?? '', de: from, para: to };
   const texts = await renderMessage('firmware_update', vars);
   const alert = await createResolvedAlert(sensor.id, 'firmware', texts.whatsapp);
-  for (const admin of admins) {
-    const notification = await createAdminNotification(alert.id, admin.id, 'whatsapp');
-    await enqueueWhatsapp({ notificationId: notification.id, phone: admin.phone!, text: texts.whatsapp });
-  }
+  await notifyAdmins(alert, texts.whatsapp);
 }
 
 // Vars comuns às 3 mensagens de conectividade — extraída à parte pra poder testar sem tocar

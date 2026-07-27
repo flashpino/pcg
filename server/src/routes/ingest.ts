@@ -61,8 +61,9 @@ export async function ingestRoutes(app: FastifyInstance): Promise<void> {
 
     // Só notifica se já havia uma versão anterior registrada — sem isso o 1º ingest de todo
     // sensor recém-provisionado (last_firmware ainda NULL) dispararia um "atualizou" falso.
-    if (sensor.last_firmware && sensor.last_firmware !== req.body.fw) {
-      await notifyAdminsFirmwareUpdate(sensor, sensor.last_firmware, req.body.fw);
+    if (sensor.last_firmware !== req.body.fw) {
+      req.log.info({ sensor: sensor.name, de: sensor.last_firmware, para: req.body.fw }, 'firmware reportado mudou');
+      if (sensor.last_firmware) await notifyAdminsFirmwareUpdate(sensor, sensor.last_firmware, req.body.fw);
     }
 
     await updateSensor(sensor.id, {
