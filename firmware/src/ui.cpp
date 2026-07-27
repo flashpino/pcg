@@ -581,16 +581,18 @@ static const char* kKbMapLower[] = {
     "q", "w", "e", "r", "t", "y", "u", "i", "o", "p", "\n",
     "a", "s", "d", "f", "g", "h", "j", "k", "l", "\n",
     "ABC", "z", "x", "c", "v", "b", "n", "m", LV_SYMBOL_BACKSPACE, "\n",
-    "1#", " ", "Enter", ""};
+    "1#", " ", LV_SYMBOL_OK, ""};
 static const char* kKbMapUpper[] = {
     "Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P", "\n",
     "A", "S", "D", "F", "G", "H", "J", "K", "L", "\n",
     "abc", "Z", "X", "C", "V", "B", "N", "M", LV_SYMBOL_BACKSPACE, "\n",
-    "1#", " ", "Enter", ""};
+    "1#", " ", LV_SYMBOL_OK, ""};
+// "Enter" por extenso não cabia em 28pt (ficava cortado) — LV_SYMBOL_OK dispara o
+// mesmo evento READY e sempre cabe. Shift/backspace ganharam largura 2 pelo mesmo motivo.
 static const lv_btnmatrix_ctrl_t kKbCtrl[] = {
     1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
     1, 1, 1, 1, 1, 1, 1, 1, 1,
-    LV_KEYBOARD_CTRL_BTN_FLAGS | 1, 1, 1, 1, 1, 1, 1, 1, LV_KEYBOARD_CTRL_BTN_FLAGS | 1,
+    LV_KEYBOARD_CTRL_BTN_FLAGS | 2, 1, 1, 1, 1, 1, 1, 1, LV_KEYBOARD_CTRL_BTN_FLAGS | 2,
     LV_KEYBOARD_CTRL_BTN_FLAGS | 2, 6, LV_KEYBOARD_CTRL_BTN_FLAGS | 2};
 
 static void buildTextInputScreen() {
