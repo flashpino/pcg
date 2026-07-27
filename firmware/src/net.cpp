@@ -289,6 +289,16 @@ static IngestResult sendIngest(const Reading* batch, size_t count) {
 static const uint32_t READ_INTERVAL_MS = 10000;
 static const uint32_t SEND_INTERVAL_MS = 60000;
 
+// ensureConnected() só enxerga associação Wi-Fi local (WL_CONNECTED) — não prova que o ingest
+// chega no servidor. Sensor fica "conectado" na tela enquanto o /api/ingest falha silenciosamente
+// (DNS, rota até a nuvem caída, etc.), e como o dispositivo é remoto, ninguém consegue reiniciar
+// fisicamente. INGEST_STALE_UI_MS marca a tela como offline mais cedo (2 ciclos perdidos, tolera
+// 1 falha isolada); INGEST_STALE_RESTART_MS força um reboot automático bem depois do
+// offline_after_seconds do painel (300s padrão) — reconectar do zero é o único self-heal possível
+// sem acesso físico ao device.
+static const uint32_t INGEST_STALE_UI_MS = 3 * SEND_INTERVAL_MS;
+static const uint32_t INGEST_STALE_RESTART_MS = 10 * 60 * 1000;
+
 static void publish(QueueHandle_t uiQueue, Status status, bool hasReading, bool sensorStale, float temp, float hum, int16_t rssi) {
   Event evt{status, hasReading, sensorStale, temp, hum, rssi};
   xQueueOverwrite(uiQueue, &evt);  // fila de tamanho 1: só o estado mais recente importa pra UI
@@ -311,6 +321,7 @@ static void task(void* pvParameters) {
 
   bool provisioned = storage::hasDeviceToken();
   uint32_t lastSendMs = 0;  // primeiro envio acontece ~60s depois do boot, igual antes
+  uint32_t lastOkSendMs = millis();  // início "saudável" — só o 1º ciclo de envio real confirma
   uint8_t sensorFailStreak = 0;
   float stuckTemp = NAN, stuckHum = NAN;
   uint32_t stuckSinceMs = 0;
@@ -376,6 +387,7 @@ static void task(void* pvParameters) {
         size_t n = ringPeekBatch(batch, 20);
         IngestResult result = sendIngest(batch, n);
         if (!result.ok) break;
+        lastOkSendMs = millis();
         ringPop(n);
         if (result.otaUrl.length() > 0 && ringCount == 0) {
           // Nunca OTA com buffer não-drenado (GOTCHA da Task 12).
@@ -384,7 +396,12 @@ static void task(void* pvParameters) {
       }
     }
 
-    publish(uiQueue, Status::ONLINE, hasReading, sensorStale, temp, hum, rssi);
+    // Wi-Fi local pode seguir "conectado" (WL_CONNECTED) mesmo com a nuvem inalcançável —
+    // por isso o reboot automático olha pro sucesso real do ingest, não pro rádio.
+    if (millis() - lastOkSendMs >= INGEST_STALE_RESTART_MS) ESP.restart();
+
+    bool ingestHealthy = millis() - lastOkSendMs < INGEST_STALE_UI_MS;
+    publish(uiQueue, ingestHealthy ? Status::ONLINE : Status::OFFLINE, hasReading, sensorStale, temp, hum, rssi);
     vTaskDelay(pdMS_TO_TICKS(READ_INTERVAL_MS));
   }
 }
