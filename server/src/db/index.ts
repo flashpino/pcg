@@ -37,7 +37,7 @@ const DEFAULT_MESSAGE_TEMPLATES: Record<string, { whatsapp: string; voice?: stri
   humidity_fire: { whatsapp: 'Umidade de {{$sensor}} fora do limite: {{$umidade}}% (min {{$min}} / max {{$max}})' },
   humidity_resolve: { whatsapp: 'Umidade de {{$sensor}} voltou ao normal.' },
   connectivity_fire: { whatsapp: 'Sensor {{$sensor}} sem comunicação há mais de {{$segundos}}s.' },
-  connectivity_resolve: { whatsapp: 'Sensor {{$sensor}} voltou a reportar.' },
+  connectivity_resolve: { whatsapp: 'Sensor {{$sensor}} voltou a reportar. Temperatura atual: {{$temperatura}}°C.' },
   connectivity_renotify: { whatsapp: 'Sensor {{$sensor}} continua sem comunicação.' },
   hardware_fire: {
     whatsapp: '⚠️ Alerta de hardware: sensor {{$sensor}} ({{$cliente}} / {{$local}}) sem leitura válida há mais de {{$segundos}}s. Verifique o dispositivo.',
@@ -87,6 +87,12 @@ export async function seedMessageTemplates(): Promise<void> {
   // "CPD"), pra não sobrescrever customização feita pelo admin em Painel > Mensagens.
   await pool.query("UPDATE message_templates SET whatsapp = $1 WHERE key = 'test_warning' AND whatsapp LIKE '%CPD%'", [
     DEFAULT_MESSAGE_TEMPLATES.test_warning.whatsapp,
+  ]);
+  // Backfill de connectivity_resolve: instalações antigas não tinham {{$temperatura}} na mensagem
+  // de "voltou a reportar" — só troca se ainda for exatamente o texto antigo sem customização.
+  await pool.query("UPDATE message_templates SET whatsapp = $1 WHERE key = 'connectivity_resolve' AND whatsapp = $2", [
+    DEFAULT_MESSAGE_TEMPLATES.connectivity_resolve.whatsapp,
+    'Sensor {{$sensor}} voltou a reportar.',
   ]);
 }
 

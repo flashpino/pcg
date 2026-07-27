@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { decideBinaryTransition, decideTransition, isBackInBounds, shouldRenotify, violatedBound } from './alertService.js';
+import {
+  connectivityVars,
+  decideBinaryTransition,
+  decideTransition,
+  isBackInBounds,
+  shouldRenotify,
+  violatedBound,
+} from './alertService.js';
 
 describe('isBackInBounds', () => {
   // Regressão: node-postgres devolve NUMERIC como string. "15" + 0.5 concatena ("150.5") em vez
@@ -33,9 +40,15 @@ describe('decideTransition', () => {
     expect(decideTransition(9, { min: null, max: 8 }, true)).toBe('renotify');
   });
 
-  it('resolve só com histerese: 7.8 continua firing, 7.4 resolve (max=8, histerese=0.5)', () => {
-    expect(decideTransition(7.8, { min: null, max: 8 }, true)).toBe('renotify');
+  it('resolve só com histerese: 7.8 segura o alerta sem renotificar, 7.4 resolve (max=8, histerese=0.5)', () => {
+    expect(decideTransition(7.8, { min: null, max: 8 }, true)).toBe('none');
     expect(decideTransition(7.4, { min: null, max: 8 }, true)).toBe('resolve');
+  });
+
+  // Regressão: contato recebeu "Temperatura: 29.6°C / Limite: 30°C" — renotify na zona morta da
+  // histerese renderiza o template _fire com um valor que já está dentro do limite.
+  it('na zona morta da histerese não renotifica (valor já dentro do limite)', () => {
+    expect(decideTransition(29.6, { min: null, max: 30 }, true)).toBe('none');
   });
 
   it('sem limites configurados nunca dispara', () => {
@@ -44,7 +57,7 @@ describe('decideTransition', () => {
 
   it('respeita limite inferior com histerese', () => {
     expect(decideTransition(1, { min: 2, max: null }, false)).toBe('fire');
-    expect(decideTransition(2.3, { min: 2, max: null }, true)).toBe('renotify');
+    expect(decideTransition(2.3, { min: 2, max: null }, true)).toBe('none');
     expect(decideTransition(2.6, { min: 2, max: null }, true)).toBe('resolve');
   });
 });
@@ -64,6 +77,26 @@ describe('decideBinaryTransition', () => {
 
   it('online e sem alerta: nada a fazer', () => {
     expect(decideBinaryTransition(false, false)).toBe('none');
+  });
+});
+
+describe('connectivityVars', () => {
+  // Regressão: quando o sensor volta a reportar, a mensagem de "voltou a reportar" não trazia a
+  // temperatura atual — evaluateConnectivity nunca buscava a leitura mais recente pra montar as vars.
+  it('inclui a temperatura atual quando há leitura recente', () => {
+    const sensor = { name: 'Sensor A', local: 'Sala 1', offline_after_seconds: 300 };
+    expect(connectivityVars(sensor, 'Cliente X', 21.5)).toEqual({
+      sensor: 'Sensor A',
+      cliente: 'Cliente X',
+      local: 'Sala 1',
+      segundos: 300,
+      temperatura: 21.5,
+    });
+  });
+
+  it('usa "--" quando não há leitura recente (sensor mudo)', () => {
+    const sensor = { name: 'Sensor A', local: null, offline_after_seconds: 300 };
+    expect(connectivityVars(sensor, '', null).temperatura).toBe('--');
   });
 });
 

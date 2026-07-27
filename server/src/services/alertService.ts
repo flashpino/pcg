@@ -58,7 +58,11 @@ export function violatedBound(value: number, bound: Bound): number | string {
 export function decideTransition(value: number, bound: Bound, firing: boolean): Transition {
   if (firing) {
     // Enquanto não voltar 0.5 para dentro do limite (zona morta da histerese), continua firing.
-    return isBackInBounds(value, bound) ? 'resolve' : 'renotify';
+    if (isBackInBounds(value, bound)) return 'resolve';
+    // Dentro do limite mas ainda na zona morta: segura o alerta (não resolve, evita flapping) sem
+    // renotificar. Renotify renderiza o template _fire, e mandar "Temperatura: 29.6 / Limite: 30"
+    // contradiz a própria mensagem de alarme.
+    return isOutOfBounds(value, bound) ? 'renotify' : 'none';
   }
   return isOutOfBounds(value, bound) ? 'fire' : 'none';
 }
@@ -268,6 +272,23 @@ export async function notifyAdminsFirmwareUpdate(sensor: Sensor, from: string, t
   }
 }
 
+// Vars comuns às 3 mensagens de conectividade — extraída à parte pra poder testar sem tocar
+// Influx/Postgres. `temperatura` vem da última leitura conhecida (sensor.id), mesmo critério de
+// sendTest: sem leitura recente ainda envia '--' (revela sensor mudo) em vez de quebrar a mensagem.
+export function connectivityVars(
+  sensor: Pick<Sensor, 'name' | 'local' | 'offline_after_seconds'>,
+  cliente: string,
+  temperatura: number | null,
+): Record<string, string | number> {
+  return {
+    sensor: sensor.name,
+    cliente,
+    local: sensor.local ?? '',
+    segundos: sensor.offline_after_seconds,
+    temperatura: temperatura ?? '--',
+  };
+}
+
 // Chamado pelo connectivitySweep (Task 9) a cada varredura — `offline` já vem calculado a partir
 // de last_seen_at/offline_after_seconds. Sensor não reivindicado nunca chega aqui (sweep filtra).
 export async function evaluateConnectivity(sensor: Sensor, offline: boolean): Promise<void> {
@@ -278,7 +299,8 @@ export async function evaluateConnectivity(sensor: Sensor, offline: boolean): Pr
   const contacts = await listContacts(sensor.client_id!);
   const prefs = await listContactAlertPrefsByClient(sensor.client_id!);
   const cliente = await clientNameOf(sensor);
-  const vars = { sensor: sensor.name, cliente, local: sensor.local ?? '', segundos: sensor.offline_after_seconds };
+  const latest = (await queryLatestReadings([sensor.id])).get(sensor.id);
+  const vars = connectivityVars(sensor, cliente, latest?.temperature ?? null);
 
   if (transition === 'fire') {
     const texts = await renderMessage('connectivity_fire', vars);
