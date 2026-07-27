@@ -121,6 +121,7 @@ export function AlertsPage() {
                   <th>Canal</th>
                   <th>Status</th>
                   <th>Detalhe</th>
+                  <th>Hora</th>
                 </tr>
               </thead>
               <tbody>
@@ -130,6 +131,7 @@ export function AlertsPage() {
                     <td>{n.channel}</td>
                     <td>{STATUS_LABELS[n.status] ?? n.status}</td>
                     <td>{n.detail ?? '-'}</td>
+                    <td>{new Date(n.created_at).toLocaleString('pt-BR')}</td>
                   </tr>
                 ))}
               </tbody>
