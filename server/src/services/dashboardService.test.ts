@@ -17,6 +17,7 @@ function sensor(overrides: Partial<Sensor>): Sensor {
     interval_seconds: 60,
     offline_after_seconds: 300,
     target_firmware: null,
+    force_ota: false,
     last_seen_at: null,
     last_firmware: null,
     last_variant: null,

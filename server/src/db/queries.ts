@@ -110,6 +110,7 @@ export interface Sensor {
   interval_seconds: number;
   offline_after_seconds: number;
   target_firmware: string | null;
+  force_ota: boolean;
   last_seen_at: string | null;
   last_firmware: string | null;
   last_variant: string | null;
@@ -155,6 +156,7 @@ export interface SensorUpdate {
   interval_seconds?: number;
   offline_after_seconds?: number;
   target_firmware?: string | null;
+  force_ota?: boolean;
   last_seen_at?: string;
   last_firmware?: string;
   last_variant?: string;
@@ -489,6 +491,10 @@ export const listFirmwares = () =>
 
 export const getFirmwareByVersion = (version: string) =>
   pool.query<Firmware>('SELECT * FROM firmware WHERE version = $1', [version]).then((r) => r.rows[0]);
+
+// Resolve o alvo "(latest)" (target_firmware NULL) — a versão cadastrada mais recentemente.
+export const getLatestFirmware = () =>
+  pool.query<Firmware>('SELECT * FROM firmware ORDER BY created_at DESC LIMIT 1').then((r) => r.rows[0]);
 
 export const createFirmware = (version: string, filename: string, sha256: string) =>
   pool

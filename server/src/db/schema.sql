@@ -39,6 +39,9 @@ ALTER TABLE sensors ADD COLUMN IF NOT EXISTS last_variant TEXT;
 -- padrão global em app_settings (test_schedule_dow/test_schedule_time).
 ALTER TABLE sensors ADD COLUMN IF NOT EXISTS test_schedule_dow TEXT;
 ALTER TABLE sensors ADD COLUMN IF NOT EXISTS test_schedule_time TEXT;
+-- Força o reenvio do OTA no próximo ingest mesmo se target_firmware == last_firmware (ex.
+-- reverter pra uma versão já instalada antes). Consumido uma vez só (ver ingest.ts).
+ALTER TABLE sensors ADD COLUMN IF NOT EXISTS force_ota BOOLEAN NOT NULL DEFAULT false;
 
 CREATE TABLE IF NOT EXISTS contacts (
   id SERIAL PRIMARY KEY,

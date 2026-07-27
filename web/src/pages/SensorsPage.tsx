@@ -21,6 +21,7 @@ interface Sensor {
   interval_seconds: number;
   offline_after_seconds: number;
   target_firmware: string | null;
+  force_ota: boolean;
   last_firmware: string | null;
   last_variant: string | null;
   last_seen_at: string | null;
@@ -351,6 +352,11 @@ export function SensorsPage() {
                         schedule
                       </span>
                     )}
+                    {s.force_ota && (
+                      <span className="material-symbols-outlined" title="Atualização forçada — dispara no próximo ingest">
+                        bolt
+                      </span>
+                    )}
                   </span>
                 </span>
               </div>
@@ -379,6 +385,15 @@ export function SensorsPage() {
                         <span className="material-symbols-outlined">groups</span>
                       </button>
                     )}
+                    <button
+                      className="icon-btn"
+                      title="Forçar reenvio no próximo ingest, mesmo se já estiver nesta versão (ex. reverter pra uma versão anterior)"
+                      aria-label="Forçar atualização mesmo na mesma versão"
+                      disabled={s.force_ota}
+                      onClick={() => patch(s, { force_ota: true })}
+                    >
+                      <span className="material-symbols-outlined">bolt</span>
+                    </button>
                   </span>
                 </span>
               </div>

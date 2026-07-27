@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { getSensorByToken, updateSensor } from '../db/queries.js';
+import { getLatestFirmware, getSensorByToken, updateSensor } from '../db/queries.js';
 import { evaluate, notifyAdminsReboot, sendTest } from '../services/alertService.js';
 import { flushInflux, writeReadings, type Reading } from '../services/influx.js';
 
@@ -69,8 +69,13 @@ export async function ingestRoutes(app: FastifyInstance): Promise<void> {
     const latest = calibrated.reduce((a, b) => (a.ago_ms <= b.ago_ms ? a : b));
     await evaluate(sensor, { temp: latest.temp, hum: latest.hum });
 
-    const ota = sensor.target_firmware && sensor.target_firmware !== req.body.fw
-      ? { version: sensor.target_firmware, url: `/api/ota/firmware/${sensor.target_firmware}.bin` }
+    // target_firmware NULL = "latest" (ver schema.sql) — resolve pra versão mais recente
+    // cadastrada, senão nunca dispara OTA pra sensores deixados no default.
+    const targetVersion = sensor.target_firmware ?? (await getLatestFirmware())?.version ?? null;
+    if (sensor.force_ota) await updateSensor(sensor.id, { force_ota: false });
+
+    const ota = targetVersion != null && (sensor.force_ota || targetVersion !== req.body.fw)
+      ? { version: targetVersion, url: `/api/ota/firmware/${targetVersion}.bin` }
       : undefined;
 
     return { ok: true, ota };
