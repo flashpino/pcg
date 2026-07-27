@@ -102,7 +102,7 @@ CREATE TABLE IF NOT EXISTS alerts (
 -- reportado pelo device no 1º ingest pós-boot. Sem estado firing real (sempre nasce resolved,
 -- via createResolvedAlert) — é só um pendurador de notification, igual 'test'.
 ALTER TABLE alerts DROP CONSTRAINT IF EXISTS alerts_type_check;
-ALTER TABLE alerts ADD CONSTRAINT alerts_type_check CHECK (type IN ('temperature','humidity','connectivity','test','reboot'));
+ALTER TABLE alerts ADD CONSTRAINT alerts_type_check CHECK (type IN ('temperature','humidity','connectivity','test','reboot','firmware'));
 -- dedup no banco: só 1 alerta firing por sensor+tipo
 CREATE UNIQUE INDEX IF NOT EXISTS alerts_one_firing ON alerts (sensor_id, type) WHERE state = 'firing';
 

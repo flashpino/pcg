@@ -199,7 +199,14 @@ static bool provision(String& tokenOut) {
 // HTTPUpdate não tem API simples pra header customizado — token vai por querystring.
 // Task 14 (server) precisa aceitar ?token= como alternativa ao header X-Device-Token no
 // download do .bin (o header continua valendo pro resto da API).
+static volatile bool otaUpdating = false;
+
+bool isOtaUpdating() {
+  return otaUpdating;
+}
+
 static void runOta(const String& url) {
+  otaUpdating = true;
   WiFiClientSecure client = makeSecureClient();
   httpUpdate.onProgress([](int, int) { esp_task_wdt_reset(); });
   String fullUrl = String(SERVER_URL) + url + "?token=" + storage::loadDeviceToken();
@@ -208,7 +215,9 @@ static void runOta(const String& url) {
     Serial.printf("OTA falhou: %s\n", httpUpdate.getLastErrorString().c_str());
     // segue o loop normal — tenta de novo no próximo ingest que trouxer ota.url
   }
-  // HTTP_UPDATE_OK reinicia o device sozinho (comportamento padrão da lib).
+  otaUpdating = false;
+  // HTTP_UPDATE_OK reinicia o device sozinho (comportamento padrão da lib) — o flag acima só
+  // importa mesmo pro caso de falha, onde a UI precisa voltar ao normal sem reboot.
 }
 
 // Motivo do reset atual (constante durante todo o boot) — visibilidade remota de reboots

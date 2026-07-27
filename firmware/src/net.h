@@ -42,4 +42,8 @@ void requestDeviceTest();
 // A UI faz poll do resultado; ao ler SENT/FAILED, o estado volta a IDLE (consumido).
 TestState consumeTestResult();
 
+// A UI (core 1) faz poll pra mostrar "atualizando firmware..." na tela enquanto o OTA
+// roda (bloqueia a task de rede inteira — sem evento de fila pra isso, só um flag).
+bool isOtaUpdating();
+
 }  // namespace net

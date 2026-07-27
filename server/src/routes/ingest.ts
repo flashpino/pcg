@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { getLatestFirmware, getSensorByToken, updateSensor } from '../db/queries.js';
-import { evaluate, notifyAdminsReboot, sendTest } from '../services/alertService.js';
+import { evaluate, notifyAdminsFirmwareUpdate, notifyAdminsReboot, sendTest } from '../services/alertService.js';
 import { flushInflux, writeReadings, type Reading } from '../services/influx.js';
 
 interface IngestBody {
@@ -57,6 +57,12 @@ export async function ingestRoutes(app: FastifyInstance): Promise<void> {
       await flushInflux();
     } catch (err) {
       throw Object.assign(new Error('falha ao escrever no influx'), { statusCode: 500, cause: err });
+    }
+
+    // Só notifica se já havia uma versão anterior registrada — sem isso o 1º ingest de todo
+    // sensor recém-provisionado (last_firmware ainda NULL) dispararia um "atualizou" falso.
+    if (sensor.last_firmware && sensor.last_firmware !== req.body.fw) {
+      await notifyAdminsFirmwareUpdate(sensor, sensor.last_firmware, req.body.fw);
     }
 
     await updateSensor(sensor.id, {

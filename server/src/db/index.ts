@@ -46,6 +46,9 @@ const DEFAULT_MESSAGE_TEMPLATES: Record<string, { whatsapp: string; voice?: stri
   reboot_fire: {
     whatsapp: '🔄 Sensor {{$sensor}} ({{$cliente}} / {{$local}}) reiniciou sozinho em {{$quando}}. Motivo: {{$motivo}}.',
   },
+  firmware_update: {
+    whatsapp: '✅ Sensor {{$sensor}} ({{$cliente}} / {{$local}}) atualizou o firmware: {{$de}} → {{$para}}.',
+  },
   welcome: { whatsapp: 'Olá {{$nome}}! Você foi cadastrado no monitoramento PCG.' },
   test: {
     whatsapp: 'Teste PCG — {{$sensor}} ({{$local}}): temperatura atual {{$temperatura}}°C ({{$quando}}).',

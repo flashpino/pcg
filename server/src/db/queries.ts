@@ -311,7 +311,7 @@ export const upsertContactAlertPref = (
 export interface Alert {
   id: number;
   sensor_id: number;
-  type: 'temperature' | 'humidity' | 'connectivity' | 'test' | 'reboot';
+  type: 'temperature' | 'humidity' | 'connectivity' | 'test' | 'reboot' | 'firmware';
   state: 'firing' | 'resolved';
   value: number | null;
   message: string;

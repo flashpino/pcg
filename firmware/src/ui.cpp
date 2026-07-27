@@ -849,6 +849,19 @@ void tick() {
     testFeedbackHideAt = 0;
   }
 
+  // OTA bloqueia a task de rede inteira (sem evento de fila) — só um flag pra UI mostrar que
+  // tá atualizando. Sucesso reinicia o device sozinho; falha volta aqui e some o overlay.
+  static bool otaMsgShown = false;
+  bool otaNow = net::isOtaUpdating();
+  if (otaNow && !otaMsgShown) {
+    showTestFeedback("atualizando firmware...", 0);
+    otaMsgShown = true;
+  } else if (!otaNow && otaMsgShown) {
+    lv_obj_add_flag(testFeedbackLabel, LV_OBJ_FLAG_HIDDEN);
+    testFeedbackHideAt = 0;
+    otaMsgShown = false;
+  }
+
   // updateHeader() reescreve relógio/data/sinal (invalida e redesenha widgets) — chamar
   // isso a ~200Hz (tick() roda a cada 5ms no loop principal) causava o piscar visível na
   // tela real. Granularidade de 1s já é mais que suficiente (relógio é HH:MM).

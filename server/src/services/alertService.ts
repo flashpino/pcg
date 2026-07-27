@@ -250,6 +250,23 @@ export async function notifyAdminsReboot(sensor: Sensor, resetReason: string): P
   }
 }
 
+// Dispara quando o `fw` reportado no ingest muda em relação ao last_firmware anterior — cobre
+// tanto a atualização normal quanto o "force" (mesma versão de destino, reflash manual), já que
+// o request original não conseguia dizer se o OTA de fato aconteceu no device.
+export async function notifyAdminsFirmwareUpdate(sensor: Sensor, from: string, to: string): Promise<void> {
+  const admins = await listAdminsWithPhone();
+  if (admins.length === 0) return;
+
+  const cliente = await clientNameOf(sensor);
+  const vars = { sensor: sensor.name, cliente, local: sensor.local ?? '', de: from, para: to };
+  const texts = await renderMessage('firmware_update', vars);
+  const alert = await createResolvedAlert(sensor.id, 'firmware', texts.whatsapp);
+  for (const admin of admins) {
+    const notification = await createAdminNotification(alert.id, admin.id, 'whatsapp');
+    await enqueueWhatsapp({ notificationId: notification.id, phone: admin.phone!, text: texts.whatsapp });
+  }
+}
+
 // Chamado pelo connectivitySweep (Task 9) a cada varredura — `offline` já vem calculado a partir
 // de last_seen_at/offline_after_seconds. Sensor não reivindicado nunca chega aqui (sweep filtra).
 export async function evaluateConnectivity(sensor: Sensor, offline: boolean): Promise<void> {
