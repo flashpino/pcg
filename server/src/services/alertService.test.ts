@@ -1,13 +1,35 @@
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   connectivityVars,
   decideBinaryTransition,
   decideTransition,
   isBackInBounds,
+  notifyAdminsFirmwareUpdate,
   renotifyValue,
   shouldRenotify,
   violatedBound,
 } from './alertService.js';
+import * as queries from '../db/queries.js';
+import { enqueueWhatsapp } from './notifier.js';
+
+// Só o necessário pros caminhos de notificação de admin — o resto do arquivo testa função pura.
+vi.mock('../db/queries.js', () => ({
+  createAdminNotification: vi.fn(async () => ({ id: 99 })),
+  createAlert: vi.fn(),
+  createNotification: vi.fn(),
+  createResolvedAlert: vi.fn(async () => ({ id: 42 })),
+  getClient: vi.fn(async () => ({ name: 'Cliente X' })),
+  getFiringAlert: vi.fn(),
+  getLastNotification: vi.fn(),
+  getMessageTemplate: vi.fn(async () => ({ whatsapp: 'Sensor {{$sensor}}: {{$de}} -> {{$para}}', voice: null })),
+  listAdminsWithPhone: vi.fn(async () => []),
+  listContactAlertPrefsByClient: vi.fn(),
+  listContacts: vi.fn(),
+  listSensors: vi.fn(),
+  resolveAlert: vi.fn(),
+}));
+vi.mock('./notifier.js', () => ({ enqueueWhatsapp: vi.fn(), enqueueVoice: vi.fn() }));
+vi.mock('./influx.js', () => ({ queryLatestReadings: vi.fn(async () => new Map()) }));
 
 describe('isBackInBounds', () => {
   // Regressão: node-postgres devolve NUMERIC como string. "15" + 0.5 concatena ("150.5") em vez
@@ -108,6 +130,35 @@ describe('connectivityVars', () => {
   it('usa "--" quando não há leitura recente (sensor mudo)', () => {
     const sensor = { name: 'Sensor A', local: null, offline_after_seconds: 300 };
     expect(connectivityVars(sensor, '', null).temperatura).toBe('--');
+  });
+});
+
+describe('notifyAdminsFirmwareUpdate', () => {
+  const sensor = { id: 7, name: 'Sensor A', local: 'Sala 1', client_id: 1 } as queries.Sensor;
+
+  beforeEach(() => vi.clearAllMocks());
+
+  it('enfileira WhatsApp pra cada admin com telefone', async () => {
+    vi.mocked(queries.listAdminsWithPhone).mockResolvedValue([
+      { id: 3, email: 'a@x', phone: '+5511999999999' },
+      { id: 4, email: 'b@x', phone: '+5511888888888' },
+    ]);
+
+    await notifyAdminsFirmwareUpdate(sensor, '1.0.0', '1.1.0');
+
+    expect(enqueueWhatsapp).toHaveBeenCalledTimes(2);
+    expect(enqueueWhatsapp).toHaveBeenCalledWith(expect.objectContaining({ phone: '+5511999999999' }));
+  });
+
+  // Regressão: sem nenhum admin com telefone a função saía antes de gravar o alerta — a
+  // atualização de firmware sumia sem rastro (nem WhatsApp, nem linha em Alertas pra diagnosticar).
+  it('registra o alerta mesmo sem nenhum admin com telefone', async () => {
+    vi.mocked(queries.listAdminsWithPhone).mockResolvedValue([]);
+
+    await notifyAdminsFirmwareUpdate(sensor, '1.0.0', '1.1.0');
+
+    expect(queries.createResolvedAlert).toHaveBeenCalledWith(7, 'firmware', expect.stringContaining('1.1.0'));
+    expect(enqueueWhatsapp).not.toHaveBeenCalled();
   });
 });
 
