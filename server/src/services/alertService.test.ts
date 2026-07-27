@@ -4,6 +4,7 @@ import {
   decideBinaryTransition,
   decideTransition,
   isBackInBounds,
+  renotifyValue,
   shouldRenotify,
   violatedBound,
 } from './alertService.js';
@@ -40,15 +41,9 @@ describe('decideTransition', () => {
     expect(decideTransition(9, { min: null, max: 8 }, true)).toBe('renotify');
   });
 
-  it('resolve só com histerese: 7.8 segura o alerta sem renotificar, 7.4 resolve (max=8, histerese=0.5)', () => {
-    expect(decideTransition(7.8, { min: null, max: 8 }, true)).toBe('none');
+  it('resolve só com histerese: 7.8 continua firing, 7.4 resolve (max=8, histerese=0.5)', () => {
+    expect(decideTransition(7.8, { min: null, max: 8 }, true)).toBe('renotify');
     expect(decideTransition(7.4, { min: null, max: 8 }, true)).toBe('resolve');
-  });
-
-  // Regressão: contato recebeu "Temperatura: 29.6°C / Limite: 30°C" — renotify na zona morta da
-  // histerese renderiza o template _fire com um valor que já está dentro do limite.
-  it('na zona morta da histerese não renotifica (valor já dentro do limite)', () => {
-    expect(decideTransition(29.6, { min: null, max: 30 }, true)).toBe('none');
   });
 
   it('sem limites configurados nunca dispara', () => {
@@ -57,8 +52,24 @@ describe('decideTransition', () => {
 
   it('respeita limite inferior com histerese', () => {
     expect(decideTransition(1, { min: 2, max: null }, false)).toBe('fire');
-    expect(decideTransition(2.3, { min: 2, max: null }, true)).toBe('none');
+    expect(decideTransition(2.3, { min: 2, max: null }, true)).toBe('renotify');
     expect(decideTransition(2.6, { min: 2, max: null }, true)).toBe('resolve');
+  });
+});
+
+describe('renotifyValue', () => {
+  // Regressão: contato recebeu "Temperatura: 29.6°C / Limite: 30°C" — a renotificação usava a
+  // leitura atual, que na zona morta da histerese já está dentro do limite e contradiz o alarme.
+  it('na zona morta da histerese usa o valor que disparou o alerta', () => {
+    expect(renotifyValue(29.6, { min: null, max: 30 }, 31)).toBe(31);
+  });
+
+  it('ainda fora do limite usa a leitura atual (mais recente que o disparo)', () => {
+    expect(renotifyValue(35, { min: null, max: 30 }, 31)).toBe(35);
+  });
+
+  it('alerta antigo sem valor gravado cai na leitura atual', () => {
+    expect(renotifyValue(29.6, { min: null, max: 30 }, null)).toBe(29.6);
   });
 });
 

@@ -55,14 +55,19 @@ export function violatedBound(value: number, bound: Bound): number | string {
   return bound.max ?? bound.min ?? '-';
 }
 
+// A renotificação fala do alerta que está em curso, não da leitura do momento: na zona morta da
+// histerese o valor atual já voltou pra dentro do limite, e mandar "29.6°C / limite 30°C" contradiz
+// o próprio alarme. Nesse caso usa o valor que disparou o alerta (alerts.value); se a leitura atual
+// ainda viola o limite, ela é mais informativa (a temperatura pode ter piorado desde o disparo).
+export function renotifyValue(current: number, bound: Bound, firedValue: number | null): number {
+  if (isOutOfBounds(current, bound)) return current;
+  return firedValue ?? current;
+}
+
 export function decideTransition(value: number, bound: Bound, firing: boolean): Transition {
   if (firing) {
     // Enquanto não voltar 0.5 para dentro do limite (zona morta da histerese), continua firing.
-    if (isBackInBounds(value, bound)) return 'resolve';
-    // Dentro do limite mas ainda na zona morta: segura o alerta (não resolve, evita flapping) sem
-    // renotificar. Renotify renderiza o template _fire, e mandar "Temperatura: 29.6 / Limite: 30"
-    // contradiz a própria mensagem de alarme.
-    return isOutOfBounds(value, bound) ? 'renotify' : 'none';
+    return isBackInBounds(value, bound) ? 'resolve' : 'renotify';
   }
   return isOutOfBounds(value, bound) ? 'fire' : 'none';
 }
@@ -163,14 +168,15 @@ async function evaluateType(
 
   const cliente = await clientNameOf(sensor);
   const valueVar = type === 'temperature' ? 'temperatura' : 'umidade';
+  const shown = transition === 'renotify' ? renotifyValue(value, bound, firing!.value) : value;
   const vars = {
     sensor: sensor.name,
     cliente,
     local: sensor.local ?? '',
-    [valueVar]: value,
+    [valueVar]: shown,
     min: bound.min ?? '-',
     max: bound.max ?? '-',
-    limite: violatedBound(value, bound),
+    limite: violatedBound(shown, bound),
   };
 
   if (transition === 'fire') {
