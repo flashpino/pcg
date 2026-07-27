@@ -69,6 +69,9 @@ export async function ingestRoutes(app: FastifyInstance): Promise<void> {
       last_seen_at: new Date().toISOString(),
       last_firmware: req.body.fw,
       ...(req.body.variant ? { last_variant: req.body.variant } : {}),
+      // Sincroniza com o nome configurado no menu do device — sem isso ficava preso no
+      // "novo-<mac>" do provisionamento pra sempre (device_name chegava mas nunca era lido).
+      ...(req.body.device_name && req.body.device_name !== sensor.name ? { name: req.body.device_name } : {}),
     });
 
     // Reading mais recente = menor ago_ms (o device manda em ordem, mas não assumir sem checar).
