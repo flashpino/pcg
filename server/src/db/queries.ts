@@ -438,8 +438,19 @@ export const getLastConnectivityResolutions = (sensorIds: number[]) =>
     .then((r) => new Map(r.rows.map((row) => [row.sensor_id, row.resolved_at])));
 
 // 2 queries (sem N+1): busca os alertas, depois todas as notifications deles de uma vez.
-export const listAlerts = async (state?: Alert['state'], limit?: number): Promise<AlertWithNotifications[]> => {
-  const limitClause = limit ? ` LIMIT ${Number(limit)}` : '';
+export const countAlerts = (state?: Alert['state']): Promise<number> =>
+  (
+    state
+      ? pool.query<{ count: string }>('SELECT COUNT(*) FROM alerts WHERE state = $1', [state])
+      : pool.query<{ count: string }>('SELECT COUNT(*) FROM alerts')
+  ).then((r) => Number(r.rows[0].count));
+
+export const listAlerts = async (
+  state?: Alert['state'],
+  limit?: number,
+  offset?: number,
+): Promise<AlertWithNotifications[]> => {
+  const limitClause = limit ? ` LIMIT ${Number(limit)} OFFSET ${Number(offset ?? 0)}` : '';
   const alerts = await (
     state
       ? pool.query<Alert>(

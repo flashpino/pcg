@@ -33,22 +33,49 @@ const STATUS_LABELS: Record<string, string> = {
   skipped_pref: 'desativado',
 };
 
+const TYPE_LABELS: Record<string, string> = {
+  temperature: 'temperatura',
+  humidity: 'umidade',
+  connectivity: 'conectividade',
+  reboot: 'reinício',
+  firmware: 'firmware',
+  test: 'teste',
+};
+
+interface AlertsResponse {
+  alerts: Alert[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
 export function AlertsPage() {
   const [alerts, setAlerts] = useState<Alert[]>([]);
+  const [total, setTotal] = useState(0);
+  const [pageSize, setPageSize] = useState(20);
+  const [page, setPage] = useState(1);
   const [state, setState] = useState<'' | 'firing' | 'resolved'>('firing');
   const [error, setError] = useState<string | null>(null);
 
   function load() {
     api
-      .get<Alert[]>(`/api/alerts${state ? `?state=${state}` : ''}`)
-      .then(setAlerts)
+      .get<AlertsResponse>(`/api/alerts?page=${page}${state ? `&state=${state}` : ''}`)
+      .then((res) => {
+        setAlerts(res.alerts);
+        setTotal(res.total);
+        setPageSize(res.pageSize);
+      })
       .catch((err) => setError(err.message));
   }
 
-  useEffect(load, [state]);
+  useEffect(load, [state, page]);
+  useEffect(() => setPage(1), [state]);
+
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
   async function resolve(a: Alert) {
-    if (!window.confirm(`Marcar o alerta de ${a.type} (${a.sensor_name}) como resolvido?`)) return;
+    if (!window.confirm(`Marcar o alerta de ${TYPE_LABELS[a.type] ?? a.type} (${a.sensor_name}) como resolvido?`))
+      return;
     await api.post(`/api/alerts/${a.id}/resolve`);
     load();
   }
@@ -67,7 +94,7 @@ export function AlertsPage() {
       {alerts.map((a) => (
         <div className="card" key={a.id}>
           <strong>
-            [{a.type}] {a.state === 'firing' ? '🔴 firing' : '✅ resolved'}
+            [{TYPE_LABELS[a.type] ?? a.type}] {a.state === 'firing' ? '🔴 disparado' : '✅ resolvido'}
           </strong>
           <p>{a.message}</p>
           <small>
@@ -105,6 +132,19 @@ export function AlertsPage() {
           )}
         </div>
       ))}
+      {totalPages > 1 && (
+        <div className="inline">
+          <button className="secondary" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
+            Anterior
+          </button>
+          <span>
+            Página {page} de {totalPages}
+          </span>
+          <button className="secondary" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)}>
+            Próxima
+          </button>
+        </div>
+      )}
     </main>
   );
 }

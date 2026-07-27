@@ -101,8 +101,8 @@ export function DashboardPage() {
           <div className={`device-card${d.online ? '' : ' offline'}`} key={d.id}>
             <div className="device-card-header">
               <div>
-                <strong>{d.client_name}</strong>
-                <div><small>{d.name}</small></div>
+                <strong>{d.name}</strong>
+                <div><small>{d.client_name}</small></div>
                 <div><small style={{ fontFamily: 'var(--mono)', fontSize: '0.62rem' }}>MAC: {d.mac}</small></div>
               </div>
               <span className={`status-chip ${d.online ? 'online' : 'offline'}`} title={d.online ? 'online' : 'offline'}>
