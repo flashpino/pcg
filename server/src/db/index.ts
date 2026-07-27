@@ -60,7 +60,7 @@ const DEFAULT_MESSAGE_TEMPLATES: Record<string, { whatsapp: string; voice?: stri
   // pra receber teste que a ligação que vem a seguir não é uma emergência real.
   test_warning: {
     whatsapp:
-      '📢 Informamos que será realizado um *teste periódico do sistema de monitoramento do CPD*.\n\nDurante o teste, você poderá receber uma *ligação telefônica automática* referente ao disparo de alerta. *Não é uma situação de emergência*; trata-se apenas de um teste para verificar o funcionamento do sistema de monitoramento e comunicação.\n\nAgradecemos pela compreensão.',
+      '📢 Informamos que será realizado um *teste periódico do sistema de monitoramento de temperatura*.\n\nDurante o teste, você poderá receber uma *ligação telefônica automática* referente ao disparo de alerta. *Não é uma situação de emergência*; trata-se apenas de um teste para verificar o funcionamento do sistema de monitoramento e comunicação.\n\nAgradecemos pela compreensão.',
   },
 };
 
@@ -76,6 +76,11 @@ export async function seedMessageTemplates(): Promise<void> {
   // existir) ganham o texto padrão agora — só se o admin não tiver customizado (voice ainda NULL).
   await pool.query("UPDATE message_templates SET voice = $1 WHERE key = 'test' AND voice IS NULL", [
     DEFAULT_MESSAGE_TEMPLATES.test.voice,
+  ]);
+  // Backfill do texto de test_warning: só troca se ainda for exatamente o texto antigo (menção a
+  // "CPD"), pra não sobrescrever customização feita pelo admin em Painel > Mensagens.
+  await pool.query("UPDATE message_templates SET whatsapp = $1 WHERE key = 'test_warning' AND whatsapp LIKE '%CPD%'", [
+    DEFAULT_MESSAGE_TEMPLATES.test_warning.whatsapp,
   ]);
 }
 

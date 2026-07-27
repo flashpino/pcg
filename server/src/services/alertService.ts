@@ -313,7 +313,8 @@ async function warnBeforeTest(alert: Alert, contacts: Contact[], prefs: ContactA
 
 // Teste de dispositivo: mesma mensagem disparada pelo botão do painel, pelo device (ESP32) e
 // pelo agendamento automático. Usa a pref dedicada 'test' de cada contato (liga/desliga, dias,
-// janela) via notifyContacts — o texto vem do template 'test', não da chave do tipo. Sem voz.
+// janela) via notifyContacts — o texto vem do template 'test', não da chave do tipo. Inclui voz
+// quando o template 'test' tem texto de voz configurado (mesmo critério de sendContactTest).
 export async function sendTest(sensor: Sensor): Promise<void> {
   if (sensor.client_id === null) return; // sensor não reivindicado não tem contatos
 
@@ -338,7 +339,8 @@ export async function sendTest(sensor: Sensor): Promise<void> {
   const contacts = await listContacts(sensor.client_id);
   const prefs = await listContactAlertPrefsByClient(sensor.client_id);
   await warnBeforeTest(alert, contacts, prefs);
-  await notifyContacts(alert, contacts, prefs, 'test', ['whatsapp'], texts, 'fire');
+  const channels: Channel[] = texts.voice ? ['whatsapp', 'voice'] : ['whatsapp'];
+  await notifyContacts(alert, contacts, prefs, 'test', channels, texts, 'fire');
 }
 
 // Teste avulso de um único contato (botão "Testar canal" no cadastro) — mesma pref dedicada
