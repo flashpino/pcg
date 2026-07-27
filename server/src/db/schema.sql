@@ -89,6 +89,15 @@ INSERT INTO contact_alert_prefs (contact_id, alert_type, enabled, days_of_week, 
   SELECT id, 'connectivity', alert_connectivity, days_of_week, window_start, window_end, renotify_minutes FROM contacts
   ON CONFLICT (contact_id, alert_type) DO NOTHING;
 
+-- 'test' = pref dedicada do botão "Testar canal" (cadastro do contato) e do teste agendado do
+-- sensor — antes o botão ignorava liga/desliga e janela de horário do contato por completo.
+ALTER TABLE contact_alert_prefs DROP CONSTRAINT IF EXISTS contact_alert_prefs_alert_type_check;
+ALTER TABLE contact_alert_prefs ADD CONSTRAINT contact_alert_prefs_alert_type_check
+  CHECK (alert_type IN ('temperature', 'humidity', 'connectivity', 'test'));
+INSERT INTO contact_alert_prefs (contact_id, alert_type)
+  SELECT id, 'test' FROM contacts
+  ON CONFLICT (contact_id, alert_type) DO NOTHING;
+
 CREATE TABLE IF NOT EXISTS alerts (
   id SERIAL PRIMARY KEY,
   sensor_id INT NOT NULL REFERENCES sensors(id),

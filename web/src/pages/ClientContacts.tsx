@@ -12,7 +12,7 @@ interface Contact {
   active: boolean;
 }
 
-type AlertType = 'connectivity' | 'temperature' | 'humidity';
+type AlertType = 'connectivity' | 'temperature' | 'humidity' | 'test';
 
 interface AlertPref {
   alert_type: AlertType;
@@ -24,11 +24,12 @@ interface AlertPref {
 }
 
 const DIAS = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sab'];
-const TYPE_ORDER: AlertType[] = ['connectivity', 'temperature', 'humidity'];
+const TYPE_ORDER: AlertType[] = ['connectivity', 'temperature', 'humidity', 'test'];
 const TYPE_LABELS: Record<AlertType, string> = {
   connectivity: 'Conectividade (Online/Offline)',
   temperature: 'Temperatura',
   humidity: 'Umidade',
+  test: 'Teste manual',
 };
 
 function emptyPref(type: AlertType): AlertPref {
@@ -36,7 +37,7 @@ function emptyPref(type: AlertType): AlertPref {
 }
 
 function emptyPrefs(): Record<AlertType, AlertPref> {
-  return { connectivity: emptyPref('connectivity'), temperature: emptyPref('temperature'), humidity: emptyPref('humidity') };
+  return { connectivity: emptyPref('connectivity'), temperature: emptyPref('temperature'), humidity: emptyPref('humidity'), test: emptyPref('test') };
 }
 
 function emptyForm(clientId: number) {

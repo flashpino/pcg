@@ -15,9 +15,10 @@ import {
   type ContactAlertPref,
   type ContactInput,
 } from '../db/queries.js';
+import { sendContactTest } from '../services/alertService.js';
 import { queryLatestReadings } from '../services/influx.js';
 import { renderTemplate } from '../services/messageTemplates.js';
-import { enqueueVoice, enqueueWhatsapp } from '../services/notifier.js';
+import { enqueueWhatsapp } from '../services/notifier.js';
 
 // Boas-vindas/teste não são alertas reais, mas notifications.alert_id é NOT NULL — pendura
 // num alerta sintético já resolvido no primeiro sensor do cliente (Tasks 8/8b usam o mesmo padrão).
@@ -62,19 +63,19 @@ export async function contactsRoutes(app: FastifyInstance): Promise<void> {
     reply.status(204);
   });
 
-  // 3 prefs por contato (temperature/humidity/connectivity), semeadas por createContact.
+  // 4 prefs por contato (temperature/humidity/connectivity/test), semeadas por createContact.
   app.get<{ Params: { id: string } }>('/api/contacts/:id/alert-prefs', async (req) =>
     listContactAlertPrefs(Number(req.params.id)),
   );
 
-  const ALERT_TYPES = ['temperature', 'humidity', 'connectivity'];
+  const ALERT_TYPES = ['temperature', 'humidity', 'connectivity', 'test'];
   app.put<{
     Params: { id: string; type: string };
     Body: Omit<ContactAlertPref, 'contact_id' | 'alert_type'>;
   }>('/api/contacts/:id/alert-prefs/:type', async (req) => {
     const { type } = req.params;
     if (!ALERT_TYPES.includes(type)) {
-      throw Object.assign(new Error("type deve ser 'temperature', 'humidity' ou 'connectivity'"), { statusCode: 400 });
+      throw Object.assign(new Error("type deve ser 'temperature', 'humidity', 'connectivity' ou 'test'"), { statusCode: 400 });
     }
     const { enabled, days_of_week, window_start, window_end, renotify_minutes } = req.body ?? {};
     return upsertContactAlertPref(Number(req.params.id), type as ContactAlertPref['alert_type'], {
@@ -113,20 +114,13 @@ export async function contactsRoutes(app: FastifyInstance): Promise<void> {
     return { ok: true };
   });
 
+  // Respeita a pref dedicada 'test' do contato (liga/desliga, dias, janela de horário) — mesma
+  // engrenagem do alerta real (notifyContacts em alertService.ts), não mais um envio incondicional.
   app.post<{ Params: { id: string } }>('/api/contacts/:id/test', async (req) => {
     const contact = await getContact(Number(req.params.id));
     if (!contact) throw Object.assign(new Error('contato não encontrado'), { statusCode: 404 });
 
-    const { alert } = await syntheticAlertFor(contact.client_id, `Teste manual para ${contact.name}`);
-    const text = `Teste PCG: canal de notificação de ${contact.name} funcionando.`;
-    if (contact.channel_whatsapp) {
-      const n = await createNotification(alert.id, contact.id, 'whatsapp', 'queued', 'test');
-      await enqueueWhatsapp({ notificationId: n.id, phone: contact.phone, text });
-    }
-    if (contact.channel_voice) {
-      const n = await createNotification(alert.id, contact.id, 'voice', 'queued', 'test');
-      await enqueueVoice({ notificationId: n.id, phone: contact.phone, text });
-    }
+    await sendContactTest(contact);
     return { ok: true };
   });
 }

@@ -50,8 +50,17 @@ const DEFAULT_MESSAGE_TEMPLATES: Record<string, { whatsapp: string; voice?: stri
     whatsapp: '✅ Sensor {{$sensor}} ({{$cliente}} / {{$local}}) atualizou o firmware: {{$de}} → {{$para}}.',
   },
   welcome: { whatsapp: 'Olá {{$nome}}! Você foi cadastrado no monitoramento PCG.' },
+  // Voz igual à de temperature_fire — o teste manual (botão "Testar canal") precisa validar a
+  // ligação de voz do contato do mesmo jeito que o alerta real faz, não só o WhatsApp.
   test: {
     whatsapp: 'Teste PCG — {{$sensor}} ({{$local}}): temperatura atual {{$temperatura}}°C ({{$quando}}).',
+    voice: 'Atenção. A temperatura de {{$sensor}} está fora do limite. Valor atual: {{$temperatura}} graus.',
+  },
+  // Enviado por WhatsApp antes de qualquer teste (sensor ou contato) — avisa quem está inscrito
+  // pra receber teste que a ligação que vem a seguir não é uma emergência real.
+  test_warning: {
+    whatsapp:
+      '📢 Informamos que será realizado um *teste periódico do sistema de monitoramento do CPD*.\n\nDurante o teste, você poderá receber uma *ligação telefônica automática* referente ao disparo de alerta. *Não é uma situação de emergência*; trata-se apenas de um teste para verificar o funcionamento do sistema de monitoramento e comunicação.\n\nAgradecemos pela compreensão.',
   },
 };
 
@@ -63,6 +72,11 @@ export async function seedMessageTemplates(): Promise<void> {
       [key, t.whatsapp, t.voice ?? null],
     );
   }
+  // Backfill: instalações que já tinham a linha 'test' sem voz (antes desta ligação de teste
+  // existir) ganham o texto padrão agora — só se o admin não tiver customizado (voice ainda NULL).
+  await pool.query("UPDATE message_templates SET voice = $1 WHERE key = 'test' AND voice IS NULL", [
+    DEFAULT_MESSAGE_TEMPLATES.test.voice,
+  ]);
 }
 
 // Defaults do agendamento do teste automático — idempotente, não sobrescreve o que o admin salvou.

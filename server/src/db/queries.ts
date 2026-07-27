@@ -221,7 +221,7 @@ export interface ContactInput {
   active?: boolean;
 }
 
-const ALERT_TYPES = ['temperature', 'humidity', 'connectivity'] as const;
+const ALERT_TYPES = ['temperature', 'humidity', 'connectivity', 'test'] as const;
 
 export const listContacts = (clientId?: number) =>
   clientId === undefined
@@ -269,7 +269,7 @@ export const deleteContact = (id: number) =>
 
 export interface ContactAlertPref {
   contact_id: number;
-  alert_type: 'temperature' | 'humidity' | 'connectivity';
+  alert_type: 'temperature' | 'humidity' | 'connectivity' | 'test';
   enabled: boolean;
   days_of_week: number[];
   window_start: string | null;

@@ -10,6 +10,7 @@ import {
   listAdminsWithPhone,
   listContactAlertPrefsByClient,
   listContacts,
+  listSensors,
   resolveAlert,
   type Alert,
   type Contact,
@@ -29,7 +30,7 @@ export interface Bound {
 }
 
 export type Transition = 'fire' | 'resolve' | 'renotify' | 'none';
-type AlertType = 'temperature' | 'humidity' | 'connectivity';
+type AlertType = 'temperature' | 'humidity' | 'connectivity' | 'test';
 
 export function isOutOfBounds(value: number, bound: Bound): boolean {
   if (bound.max !== null && value > bound.max) return true;
@@ -302,9 +303,17 @@ export async function evaluateConnectivity(sensor: Sensor, offline: boolean): Pr
   await notifyContacts(firing!, contacts, prefs, 'connectivity', ['whatsapp'], texts, 'renotify');
 }
 
+// Avisa por WhatsApp, antes de qualquer teste, que a ligação que vem a seguir não é uma
+// emergência real — mesma pref 'test' (enabled/janela/canal) do teste em si, então só chega a
+// quem de fato vai receber o teste.
+async function warnBeforeTest(alert: Alert, contacts: Contact[], prefs: ContactAlertPref[]): Promise<void> {
+  const warningTexts = await renderMessage('test_warning', {});
+  await notifyContacts(alert, contacts, prefs, 'test', ['whatsapp'], warningTexts, 'fire');
+}
+
 // Teste de dispositivo: mesma mensagem disparada pelo botão do painel, pelo device (ESP32) e
-// pelo agendamento automático. Reaproveita a pref de 'temperature' de cada contato (janela/dias)
-// via notifyContacts — o texto vem do template 'test', não da chave do tipo. Sem voz.
+// pelo agendamento automático. Usa a pref dedicada 'test' de cada contato (liga/desliga, dias,
+// janela) via notifyContacts — o texto vem do template 'test', não da chave do tipo. Sem voz.
 export async function sendTest(sensor: Sensor): Promise<void> {
   if (sensor.client_id === null) return; // sensor não reivindicado não tem contatos
 
@@ -328,5 +337,24 @@ export async function sendTest(sensor: Sensor): Promise<void> {
   const alert = await createResolvedAlert(sensor.id, 'test', texts.whatsapp);
   const contacts = await listContacts(sensor.client_id);
   const prefs = await listContactAlertPrefsByClient(sensor.client_id);
-  await notifyContacts(alert, contacts, prefs, 'temperature', ['whatsapp'], texts, 'fire');
+  await warnBeforeTest(alert, contacts, prefs);
+  await notifyContacts(alert, contacts, prefs, 'test', ['whatsapp'], texts, 'fire');
+}
+
+// Teste avulso de um único contato (botão "Testar canal" no cadastro) — mesma pref dedicada
+// 'test' usada por sendTest(sensor), mas restrita a esse contato. Antes esse botão ignorava
+// active/enabled/janela por completo; agora passa pela mesma engrenagem que o alerta real.
+export async function sendContactTest(contact: Contact): Promise<void> {
+  const sensors = await listSensors(contact.client_id);
+  const sensor = sensors[0];
+  if (!sensor) throw Object.assign(new Error('cliente sem sensor cadastrado'), { statusCode: 400 });
+
+  const cliente = await clientNameOf(sensor);
+  const vars = { sensor: sensor.name, cliente, local: sensor.local ?? '', nome: contact.name };
+  const texts = await renderMessage('test', vars);
+  const alert = await createResolvedAlert(sensor.id, 'test', texts.whatsapp);
+  const prefs = await listContactAlertPrefsByClient(contact.client_id);
+  await warnBeforeTest(alert, [contact], prefs);
+  const channels: Channel[] = texts.voice ? ['whatsapp', 'voice'] : ['whatsapp'];
+  await notifyContacts(alert, [contact], prefs, 'test', channels, texts, 'fire');
 }
