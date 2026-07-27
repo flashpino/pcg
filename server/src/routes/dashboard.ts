@@ -32,6 +32,7 @@ export async function dashboardRoutes(app: FastifyInstance): Promise<void> {
       return {
         id: sensor.id,
         name: sensor.name,
+        local: sensor.local,
         mac: sensor.mac,
         client_id: sensor.client_id,
         client_name: clientNames.get(sensor.client_id!) ?? '—',

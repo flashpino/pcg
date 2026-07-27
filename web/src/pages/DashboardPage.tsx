@@ -11,6 +11,7 @@ interface Kpis {
 interface Device {
   id: number;
   name: string;
+  local: string | null;
   mac: string;
   client_name: string;
   online: boolean;
@@ -101,13 +102,17 @@ export function DashboardPage() {
           <div className={`device-card${d.online ? '' : ' offline'}`} key={d.id}>
             <div className="device-card-header">
               <div>
-                <strong>{d.name}</strong>
-                <div><small>{d.client_name}</small></div>
+                <strong>{d.local ?? d.name}</strong>
                 <div><small style={{ fontFamily: 'var(--mono)', fontSize: '0.62rem' }}>MAC: {d.mac}</small></div>
               </div>
-              <span className={`status-chip ${d.online ? 'online' : 'offline'}`} title={d.online ? 'online' : 'offline'}>
-                <span className="dot" />
-              </span>
+              <div style={{ textAlign: 'right' }}>
+                <small>{d.client_name} — {d.name}</small>
+                <div>
+                  <span className={`status-chip ${d.online ? 'online' : 'offline'}`} title={d.online ? 'online' : 'offline'}>
+                    <span className="dot" />
+                  </span>
+                </div>
+              </div>
             </div>
             <div className="device-card-readings">
               <div>
