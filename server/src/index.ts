@@ -19,6 +19,7 @@ import { messageTemplatesRoutes } from './routes/messageTemplates.js';
 import { provisionRoutes } from './routes/provision.js';
 import { sensorsRoutes } from './routes/sensors.js';
 import { settingsRoutes } from './routes/settings.js';
+import { twilioRoutes } from './routes/twilio.js';
 import { startConnectivitySweep } from './services/connectivitySweep.js';
 import { getEvolutionConnectionState, startNotifier } from './services/notifier.js';
 
@@ -29,6 +30,7 @@ const REQUIRED_ENVS = [
   'TWILIO_ACCOUNT_SID', 'TWILIO_AUTH_TOKEN', 'TWILIO_VOICE_FROM',
   'EVOLUTION_URL', 'EVOLUTION_APIKEY', 'EVOLUTION_INSTANCE',
   'JWT_SECRET', 'ADMIN_EMAIL', 'ADMIN_PASSWORD',
+  'PUBLIC_URL',
 ];
 const missing = REQUIRED_ENVS.filter((k) => !process.env[k]);
 if (missing.length > 0) {
@@ -42,7 +44,7 @@ const PUBLIC_API_ROUTES = ['/api/auth/login', '/api/client/login', '/api/ingest'
 const isPublic = (url: string) => {
   const path = url.split('?')[0];
   if (!path.startsWith('/api/')) return true;
-  return PUBLIC_API_ROUTES.includes(path) || path.startsWith('/api/ota/');
+  return PUBLIC_API_ROUTES.includes(path) || path.startsWith('/api/ota/') || path.startsWith('/api/twilio/');
 };
 
 // Autorização por role, além da autenticação (jwtVerify): token de cliente só abre rotas
@@ -103,6 +105,7 @@ await app.register(settingsRoutes);
 await app.register(provisionRoutes);
 await app.register(ingestRoutes);
 await app.register(firmwareRoutes);
+await app.register(twilioRoutes);
 
 // web/dist só existe depois de `npm run build` em web/ — em dev usa-se o Vite dev server
 // (proxy pra :3000) em vez disto, então não travar o boot se a pasta não existir ainda.

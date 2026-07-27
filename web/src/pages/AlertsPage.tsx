@@ -31,6 +31,11 @@ const STATUS_LABELS: Record<string, string> = {
   failed: 'falhou',
   skipped_window: 'fora da janela',
   skipped_pref: 'desativado',
+  // Resultado final da ligação de voz, reportado pela Twilio (server/src/routes/twilio.ts).
+  completed: 'atendeu',
+  'no-answer': 'não atendeu',
+  busy: 'ocupado',
+  canceled: 'cancelada',
 };
 
 const TYPE_LABELS: Record<string, string> = {

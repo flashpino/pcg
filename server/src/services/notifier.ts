@@ -71,6 +71,11 @@ async function sendVoice(job: NotifyJob): Promise<void> {
     to: job.phone,
     from: process.env.TWILIO_VOICE_FROM!,
     twiml: `<Response><Say language="pt-BR">${escapeXml(job.text)}</Say></Response>`,
+    // Twilio bate aqui quando a ligação termina, com o resultado final (atendeu/não atendeu/
+    // ocupado/falhou) — server/src/routes/twilio.ts grava isso em notifications.status.
+    statusCallback: `${process.env.PUBLIC_URL}/api/twilio/voice-status/${job.notificationId}`,
+    statusCallbackEvent: ['completed'],
+    statusCallbackMethod: 'POST',
   });
 }
 
