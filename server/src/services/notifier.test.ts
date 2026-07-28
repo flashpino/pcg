@@ -1,5 +1,25 @@
 import { describe, expect, it } from 'vitest';
-import { spNow } from './notifier.js';
+import { spNow, voiceTwiml } from './notifier.js';
+
+describe('voiceTwiml', () => {
+  it('põe pausa entre as frases do alerta', () => {
+    const twiml = voiceTwiml('Atenção. A temperatura de Câmara 1 está fora do limite.');
+    expect(twiml).toContain('Atenção.<break time="500ms"/>A temperatura de Câmara 1 está fora do limite.');
+  });
+
+  it('fala um pouco mais devagar', () => {
+    expect(voiceTwiml('Teste.')).toContain('<prosody rate="92%">Teste.</prosody>');
+  });
+
+  it('não quebra em ponto decimal', () => {
+    expect(voiceTwiml('Valor atual: 23.5 graus.')).not.toContain('23.5<break');
+  });
+
+  it('escapa o texto do template — admin não injeta TwiML pelo painel', () => {
+    const twiml = voiceTwiml('Sensor <b>A</b> & B.');
+    expect(twiml).toContain('Sensor &lt;b&gt;A&lt;/b&gt; &amp; B.');
+  });
+});
 
 describe('spNow', () => {
   it('segunda 09:00 em São Paulo (UTC-3, sem horário de verão desde 2019)', () => {

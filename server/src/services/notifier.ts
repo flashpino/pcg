@@ -63,9 +63,27 @@ async function sendWhatsapp(job: NotifyJob): Promise<void> {
 }
 
 const VOICE_NAME = process.env.TWILIO_VOICE_NAME || 'Google.pt-BR-Neural2-B';
+// Ajuste fino da locução: no telefone a voz neural sai corrida e atropela nome de sensor e
+// número. Um pouco mais devagar, com respiro entre as frases, é o que faz soar natural.
+const SPEECH_RATE = '92%';
+const SENTENCE_PAUSE = '500ms';
 
 function escapeXml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+// O SSML é montado AQUI, nunca no template do admin: o texto dele continua escapado por inteiro.
+// Se o template pudesse trazer tag, o campo de mensagem do painel viraria injeção de TwiML.
+// Só as tags do subset da Twilio (break/prosody/say-as/emphasis/lang/p/s/phoneme/sub/w) valem —
+// as extensões do Google (google:style, mark, audio) são rejeitadas.
+export function voiceTwiml(text: string): string {
+  // Quebra em frases pelo ponto final seguido de espaço — "1.5" e "Dr." colados não quebram.
+  const body = text
+    .split(/(?<=[.!?])\s+/)
+    .filter((s) => s.trim())
+    .map(escapeXml)
+    .join(`<break time="${SENTENCE_PAUSE}"/>`);
+  return `<Response><Say voice="${VOICE_NAME}"><prosody rate="${SPEECH_RATE}">${body}</prosody></Say></Response>`;
 }
 
 async function sendVoice(job: NotifyJob): Promise<void> {
@@ -74,8 +92,8 @@ async function sendVoice(job: NotifyJob): Promise<void> {
     from: process.env.TWILIO_VOICE_FROM!,
     // Sem `voice=` a Twilio usa a voz básica (bem robótica). Neural2 soa bem mais natural e o
     // atributo já carrega o idioma. Trocável por env pra testar outras (Wavenet, Polly.Camila-Neural)
-    // sem mexer em código — vozes Chirp3-HD/Generative funcionam, mas ignoram SSML.
-    twiml: `<Response><Say voice="${VOICE_NAME}">${escapeXml(job.text)}</Say></Response>`,
+    // sem mexer em código — mas evite Chirp3-HD/Generative: elas ignoram o SSML de voiceTwiml.
+    twiml: voiceTwiml(job.text),
     // Twilio bate aqui quando a ligação termina, com o resultado final (completou/não atendeu/
     // ocupado/falhou) — server/src/routes/twilio.ts grava isso em notifications.status.
     statusCallback: `${process.env.PUBLIC_URL}/api/twilio/voice-status/${job.notificationId}`,
