@@ -3,6 +3,7 @@ import {
   connectivityVars,
   decideBinaryTransition,
   decideTransition,
+  evaluateHardware,
   isBackInBounds,
   notifyAdminsFirmwareUpdate,
   renotifyValue,
@@ -158,6 +159,63 @@ describe('notifyAdminsFirmwareUpdate', () => {
     await notifyAdminsFirmwareUpdate(sensor, '1.0.0', '1.1.0');
 
     expect(queries.createResolvedAlert).toHaveBeenCalledWith(7, 'firmware', expect.stringContaining('1.1.0'));
+    expect(enqueueWhatsapp).not.toHaveBeenCalled();
+  });
+});
+
+describe('evaluateHardware', () => {
+  const sensor = {
+    id: 12,
+    name: 'proatus_B678',
+    local: 'CPD',
+    client_id: 2,
+    offline_after_seconds: 300,
+  } as queries.Sensor;
+
+  beforeEach(() => vi.clearAllMocks());
+
+  // Regressão de campo (2026-07-28): o proatus_B678 passou 3h30 rotulado como "offline" no painel
+  // — com Wi-Fi a -28 dBm e o device respondendo SNMP — porque o DHT22 morreu e o firmware não
+  // tinha como dizer "estou vivo, quem morreu foi o sensor". O alerta que saiu mandou a equipe
+  // checar provedor/cabeamento; o problema era o sensor no CN1.
+  it('dispara alerta de hardware (não de conectividade) quando o device reporta sensor travado', async () => {
+    vi.mocked(queries.getFiringAlert).mockResolvedValue(undefined);
+    vi.mocked(queries.createAlert).mockResolvedValue({ id: 55 } as queries.Alert);
+    vi.mocked(queries.listAdminsWithPhone).mockResolvedValue([{ id: 3, email: 'a@x', phone: '+5511999999999' }]);
+
+    await evaluateHardware(sensor, true);
+
+    expect(queries.createAlert).toHaveBeenCalledWith(12, 'hardware', null, expect.any(String));
+    expect(enqueueWhatsapp).toHaveBeenCalledTimes(1);
+  });
+
+  it('resolve o alerta quando as leituras voltam', async () => {
+    vi.mocked(queries.getFiringAlert).mockResolvedValue({ id: 55 } as queries.Alert);
+    vi.mocked(queries.listAdminsWithPhone).mockResolvedValue([]);
+
+    await evaluateHardware(sensor, false);
+
+    expect(queries.resolveAlert).toHaveBeenCalledWith(55);
+  });
+
+  it('sensor saudável e sem alerta firing não faz nada', async () => {
+    vi.mocked(queries.getFiringAlert).mockResolvedValue(undefined);
+
+    await evaluateHardware(sensor, false);
+
+    expect(queries.createAlert).not.toHaveBeenCalled();
+    expect(enqueueWhatsapp).not.toHaveBeenCalled();
+  });
+
+  // O heartbeat chega a cada 60s enquanto o sensor estiver travado — re-notificar a cada ingest
+  // encheria o WhatsApp do time. Alerta de hardware é fire/resolve só, igual notifyAdminsHardware.
+  it('já firing e ainda travado não re-notifica (evita spam a cada heartbeat)', async () => {
+    vi.mocked(queries.getFiringAlert).mockResolvedValue({ id: 55 } as queries.Alert);
+    vi.mocked(queries.listAdminsWithPhone).mockResolvedValue([{ id: 3, email: 'a@x', phone: '+5511999999999' }]);
+
+    await evaluateHardware(sensor, true);
+
+    expect(queries.createAlert).not.toHaveBeenCalled();
     expect(enqueueWhatsapp).not.toHaveBeenCalled();
   });
 });
