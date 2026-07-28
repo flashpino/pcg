@@ -15,6 +15,13 @@ describe('voiceTwiml', () => {
     expect(voiceTwiml('Valor atual: 23.5 graus.')).not.toContain('23.5<break');
   });
 
+  it('não manda SSML para voz Chirp3-HD, que não entende as tags', () => {
+    const twiml = voiceTwiml('Atenção. Teste.', 'Google.pt-BR-Chirp3-HD-Aoede');
+    expect(twiml).not.toContain('<break');
+    expect(twiml).not.toContain('<prosody');
+    expect(twiml).toContain('>Atenção. Teste.</Say>');
+  });
+
   it('escapa o texto do template — admin não injeta TwiML pelo painel', () => {
     const twiml = voiceTwiml('Sensor <b>A</b> & B.');
     expect(twiml).toContain('Sensor &lt;b&gt;A&lt;/b&gt; &amp; B.');

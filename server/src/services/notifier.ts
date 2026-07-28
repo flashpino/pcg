@@ -76,14 +76,19 @@ function escapeXml(s: string): string {
 // Se o template pudesse trazer tag, o campo de mensagem do painel viraria injeção de TwiML.
 // Só as tags do subset da Twilio (break/prosody/say-as/emphasis/lang/p/s/phoneme/sub/w) valem —
 // as extensões do Google (google:style, mark, audio) são rejeitadas.
-export function voiceTwiml(text: string): string {
+export function voiceTwiml(text: string, voice = VOICE_NAME): string {
+  // Chirp3-HD e Generative são as vozes mais naturais do catálogo, mas não entendem SSML — com
+  // elas o ritmo tem que vir da pontuação do próprio texto, senão a locução sai adulterada.
+  if (/Chirp3-HD|Generative/i.test(voice)) {
+    return `<Response><Say voice="${voice}">${escapeXml(text)}</Say></Response>`;
+  }
   // Quebra em frases pelo ponto final seguido de espaço — "1.5" e "Dr." colados não quebram.
   const body = text
     .split(/(?<=[.!?])\s+/)
     .filter((s) => s.trim())
     .map(escapeXml)
     .join(`<break time="${SENTENCE_PAUSE}"/>`);
-  return `<Response><Say voice="${VOICE_NAME}"><prosody rate="${SPEECH_RATE}">${body}</prosody></Say></Response>`;
+  return `<Response><Say voice="${voice}"><prosody rate="${SPEECH_RATE}">${body}</prosody></Say></Response>`;
 }
 
 async function sendVoice(job: NotifyJob): Promise<void> {
