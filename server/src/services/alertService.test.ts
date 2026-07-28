@@ -179,7 +179,9 @@ describe('evaluateHardware', () => {
   // tinha como dizer "estou vivo, quem morreu foi o sensor". O alerta que saiu mandou a equipe
   // checar provedor/cabeamento; o problema era o sensor no CN1.
   it('dispara alerta de hardware (não de conectividade) quando o device reporta sensor travado', async () => {
-    vi.mocked(queries.getFiringAlert).mockResolvedValue(undefined);
+    // rows[0] é tipado como Alert mas vem undefined quando não há alerta firing — o código de
+    // produção já trata isso (Boolean(firing) / firing!), o cast só alinha o mock ao runtime.
+    vi.mocked(queries.getFiringAlert).mockResolvedValue(undefined as unknown as queries.Alert);
     vi.mocked(queries.createAlert).mockResolvedValue({ id: 55 } as queries.Alert);
     vi.mocked(queries.listAdminsWithPhone).mockResolvedValue([{ id: 3, email: 'a@x', phone: '+5511999999999' }]);
 
@@ -199,7 +201,9 @@ describe('evaluateHardware', () => {
   });
 
   it('sensor saudável e sem alerta firing não faz nada', async () => {
-    vi.mocked(queries.getFiringAlert).mockResolvedValue(undefined);
+    // rows[0] é tipado como Alert mas vem undefined quando não há alerta firing — o código de
+    // produção já trata isso (Boolean(firing) / firing!), o cast só alinha o mock ao runtime.
+    vi.mocked(queries.getFiringAlert).mockResolvedValue(undefined as unknown as queries.Alert);
 
     await evaluateHardware(sensor, false);
 

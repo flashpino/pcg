@@ -229,6 +229,35 @@ async function notifyAdminsHardware(alert: Alert, kind: 'fire' | 'resolve', vars
   await notifyAdmins(alert, texts.whatsapp);
 }
 
+// Device vivo (heartbeat chegando) mas sem leitura válida — DHT travado/desconectado. É o caso
+// que antes se disfarçava de 'connectivity': sem leitura o firmware não ingeria nada, last_seen_at
+// congelava e o painel dizia "offline" um device com Wi-Fi perfeito, mandando a equipe caçar rede.
+// Só fire/resolve, sem renotify: o heartbeat chega a cada 60s e repetir encheria o WhatsApp do time.
+export async function evaluateHardware(sensor: Sensor, stale: boolean): Promise<void> {
+  const firing = await getFiringAlert(sensor.id, 'hardware');
+  const transition = decideBinaryTransition(stale, Boolean(firing));
+  if (transition === 'fire') {
+    const vars = await hardwareVars(sensor);
+    const texts = await renderMessage('hardware_fire', vars);
+    const alert = await createAlert(sensor.id, 'hardware', null, texts.whatsapp);
+    if (alert) await notifyAdminsHardware(alert, 'fire', vars);
+    return;
+  }
+  if (transition === 'resolve') {
+    await resolveAlert(firing!.id);
+    await notifyAdminsHardware(firing!, 'resolve', await hardwareVars(sensor));
+  }
+}
+
+async function hardwareVars(sensor: Sensor): Promise<Record<string, string | number>> {
+  return {
+    sensor: sensor.name,
+    cliente: await clientNameOf(sensor),
+    local: sensor.local ?? '',
+    segundos: sensor.offline_after_seconds,
+  };
+}
+
 // Rótulos pt-BR de esp_reset_reason() (ver resetReasonStr() no firmware) — "poweron" nunca
 // dispara aqui (é o boot normal); os demais indicam reinício fora do ciclo esperado.
 const RESET_REASON_LABELS: Record<string, string> = {

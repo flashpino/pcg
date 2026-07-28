@@ -110,8 +110,11 @@ CREATE TABLE IF NOT EXISTS alerts (
 -- 'reboot' = evento pontual de reinício fora do normal (watchdog/panic/brownout/self-heal),
 -- reportado pelo device no 1º ingest pós-boot. Sem estado firing real (sempre nasce resolved,
 -- via createResolvedAlert) — é só um pendurador de notification, igual 'test'.
+-- 'hardware' = device vivo (heartbeat chegando) mas sem leitura válida: DHT travado/desconectado.
+-- Distinto de 'connectivity', que é ausência de ingest. Sem esse tipo, sensor com DHT morto era
+-- rotulado "offline" e o alerta mandava a equipe caçar problema de rede que não existia.
 ALTER TABLE alerts DROP CONSTRAINT IF EXISTS alerts_type_check;
-ALTER TABLE alerts ADD CONSTRAINT alerts_type_check CHECK (type IN ('temperature','humidity','connectivity','test','reboot','firmware'));
+ALTER TABLE alerts ADD CONSTRAINT alerts_type_check CHECK (type IN ('temperature','humidity','connectivity','test','reboot','firmware','hardware'));
 -- dedup no banco: só 1 alerta firing por sensor+tipo
 CREATE UNIQUE INDEX IF NOT EXISTS alerts_one_firing ON alerts (sensor_id, type) WHERE state = 'firing';
 

@@ -1,6 +1,12 @@
 import type { FastifyInstance } from 'fastify';
 import { getSensorByToken, updateSensor } from '../db/queries.js';
-import { evaluate, notifyAdminsFirmwareUpdate, notifyAdminsReboot, sendTest } from '../services/alertService.js';
+import {
+  evaluate,
+  evaluateHardware,
+  notifyAdminsFirmwareUpdate,
+  notifyAdminsReboot,
+  sendTest,
+} from '../services/alertService.js';
 import { flushInflux, writeReadings, type Reading } from '../services/influx.js';
 
 interface IngestBody {
@@ -9,6 +15,7 @@ interface IngestBody {
   variant?: string;
   device_name?: string;
   reset_reason?: string;
+  sensor_stale?: boolean;
 }
 
 // Fronteira de confiança (device remoto) — validação de faixa não é opcional.
@@ -21,6 +28,15 @@ function isValidReading(r: Partial<Reading> | undefined): r is Reading {
     typeof rssi === 'number' && Number.isFinite(rssi) &&
     typeof ago_ms === 'number' && Number.isFinite(ago_ms) && ago_ms >= 0
   );
+}
+
+// Lote vazio só é aceito como heartbeat de sensor travado (o device declara sensor_stale). Sem
+// essa exceção o device com DHT morto não tinha o que enviar, não chamava /api/ingest, e o painel
+// o rotulava "offline" — indistinguível de queda de rede. O teto de 400 vale nos dois casos.
+export function isValidIngestReadings(readings: unknown[], sensorStale: boolean): boolean {
+  if (readings.length > 400) return false;
+  if (readings.length === 0) return sensorStale;
+  return readings.every((r) => isValidReading(r as Partial<Reading>));
 }
 
 export async function ingestRoutes(app: FastifyInstance): Promise<void> {
@@ -43,7 +59,8 @@ export async function ingestRoutes(app: FastifyInstance): Promise<void> {
     }
 
     const readings = req.body?.readings ?? [];
-    if (readings.length === 0 || readings.length > 400 || !readings.every(isValidReading)) {
+    const sensorStale = req.body?.sensor_stale === true;
+    if (!isValidIngestReadings(readings, sensorStale)) {
       throw Object.assign(new Error('readings inválidas'), { statusCode: 400 });
     }
     if (typeof req.body.fw !== 'string' || !req.body.fw) {
@@ -52,11 +69,15 @@ export async function ingestRoutes(app: FastifyInstance): Promise<void> {
 
     const calibrated = readings.map((r) => ({ ...r, temp: r.temp + sensor.temp_offset }));
 
-    writeReadings(sensor.client_id, sensor.id, calibrated);
-    try {
-      await flushInflux();
-    } catch (err) {
-      throw Object.assign(new Error('falha ao escrever no influx'), { statusCode: 500, cause: err });
+    // Heartbeat de sensor travado não tem ponto pra gravar — pular o Influx aqui é o que permite
+    // o device seguir marcando presença (last_seen_at) mesmo sem nenhuma leitura.
+    if (calibrated.length > 0) {
+      writeReadings(sensor.client_id, sensor.id, calibrated);
+      try {
+        await flushInflux();
+      } catch (err) {
+        throw Object.assign(new Error('falha ao escrever no influx'), { statusCode: 500, cause: err });
+      }
     }
 
     // Só notifica se já havia uma versão anterior registrada — sem isso o 1º ingest de todo
@@ -75,9 +96,16 @@ export async function ingestRoutes(app: FastifyInstance): Promise<void> {
       ...(req.body.device_name && req.body.device_name !== sensor.name ? { name: req.body.device_name } : {}),
     });
 
+    // Alerta de hardware é decidido pelo que o device declara, não por ausência de ingest —
+    // resolve sozinho no primeiro lote com leitura de verdade.
+    await evaluateHardware(sensor, sensorStale && calibrated.length === 0);
+
     // Reading mais recente = menor ago_ms (o device manda em ordem, mas não assumir sem checar).
-    const latest = calibrated.reduce((a, b) => (a.ago_ms <= b.ago_ms ? a : b));
-    await evaluate(sensor, { temp: latest.temp, hum: latest.hum });
+    // Sem leitura (heartbeat) não há limite de temp/umidade a avaliar.
+    if (calibrated.length > 0) {
+      const latest = calibrated.reduce((a, b) => (a.ago_ms <= b.ago_ms ? a : b));
+      await evaluate(sensor, { temp: latest.temp, hum: latest.hum });
+    }
 
     // target_firmware NULL = "não atualizar" (ver schema.sql) — sensor fica parado na
     // versão atual até o admin escolher uma versão explícita no painel.
