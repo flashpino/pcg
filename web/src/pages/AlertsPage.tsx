@@ -32,7 +32,9 @@ const STATUS_LABELS: Record<string, string> = {
   skipped_window: 'fora da janela',
   skipped_pref: 'desativado',
   // Resultado final da ligação de voz, reportado pela Twilio (server/src/routes/twilio.ts).
-  completed: 'atendeu',
+  // 'completed' NÃO é sinônimo de atendida: a caixa postal da operadora também completa a
+  // ligação. Quem atendeu (pessoa x secretária) aparece na coluna Detalhe, vinda do AMD.
+  completed: 'ligação completada',
   'no-answer': 'não atendeu',
   busy: 'ocupado',
   canceled: 'cancelada',
