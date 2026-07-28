@@ -62,6 +62,8 @@ async function sendWhatsapp(job: NotifyJob): Promise<void> {
   if (!res.ok) throw new Error(`evolution respondeu ${res.status}: ${await res.text()}`);
 }
 
+const VOICE_NAME = process.env.TWILIO_VOICE_NAME || 'Google.pt-BR-Neural2-B';
+
 function escapeXml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
@@ -70,7 +72,10 @@ async function sendVoice(job: NotifyJob): Promise<void> {
   await twilioClient.calls.create({
     to: job.phone,
     from: process.env.TWILIO_VOICE_FROM!,
-    twiml: `<Response><Say language="pt-BR">${escapeXml(job.text)}</Say></Response>`,
+    // Sem `voice=` a Twilio usa a voz básica (bem robótica). Neural2 soa bem mais natural e o
+    // atributo já carrega o idioma. Trocável por env pra testar outras (Wavenet, Polly.Camila-Neural)
+    // sem mexer em código — vozes Chirp3-HD/Generative funcionam, mas ignoram SSML.
+    twiml: `<Response><Say voice="${VOICE_NAME}">${escapeXml(job.text)}</Say></Response>`,
     // Twilio bate aqui quando a ligação termina, com o resultado final (completou/não atendeu/
     // ocupado/falhou) — server/src/routes/twilio.ts grava isso em notifications.status.
     statusCallback: `${process.env.PUBLIC_URL}/api/twilio/voice-status/${job.notificationId}`,
