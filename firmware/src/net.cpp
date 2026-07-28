@@ -241,7 +241,10 @@ struct IngestResult {
   String otaUrl;  // vazio se não houver OTA pendente
 };
 
-static IngestResult sendIngest(const Reading* batch, size_t count) {
+// count == 0 é o heartbeat de sensor travado: o POST vai com readings vazio e sensor_stale=true,
+// e o server aceita só nessa condição. É o que mantém last_seen_at fresco (device aparece online,
+// com alerta de hardware) em vez de sumir do painel como se fosse queda de rede.
+static IngestResult sendIngest(const Reading* batch, size_t count, bool sensorStale) {
   IngestResult result{false, ""};
 
   WiFiClientSecure client = makeSecureClient();
@@ -264,6 +267,7 @@ static IngestResult sendIngest(const Reading* batch, size_t count) {
   doc["variant"] = FW_VARIANT;
   doc["device_name"] = storage::loadDeviceName();
   doc["reset_reason"] = resetReasonStr();
+  doc["sensor_stale"] = sensorStale;
 
   String body;
   serializeJson(doc, body);
@@ -381,11 +385,24 @@ static void task(void* pvParameters) {
 
     if (millis() - lastSendMs >= SEND_INTERVAL_MS) {
       lastSendMs = millis();
+      // Buffer vazio com sensor travado: manda heartbeat pra marcar presença. Sem isso o device
+      // com DHT morto não tinha o que enviar, nunca chamava /api/ingest, e o painel o dava como
+      // offline — e o ESP.restart() de INGEST_STALE_RESTART_MS reiniciava de 10 em 10 min pra
+      // sempre, já que lastOkSendMs só era atualizado dentro do laço de drenagem abaixo.
+      if (ringCount == 0 && sensorStale) {
+        IngestResult hb = sendIngest(nullptr, 0, true);
+        if (hb.ok) {
+          lastOkSendMs = millis();
+          // Buffer vazio por definição aqui, então o GOTCHA do OTA já está satisfeito — e este é
+          // o único caminho de atualização que sobra pra um device cujo sensor morreu.
+          if (hb.otaUrl.length() > 0) runOta(hb.otaUrl);
+        }
+      }
       // Drena o buffer em lotes de 20 até esvaziar ou até um POST falhar (fica pro próximo ciclo).
       while (ringCount > 0) {
         Reading batch[20];
         size_t n = ringPeekBatch(batch, 20);
-        IngestResult result = sendIngest(batch, n);
+        IngestResult result = sendIngest(batch, n, false);
         if (!result.ok) break;
         lastOkSendMs = millis();
         ringPop(n);
