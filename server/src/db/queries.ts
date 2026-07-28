@@ -480,19 +480,13 @@ export const listAlerts = async (
   return alerts.map((a) => ({ ...a, notifications: byAlert.get(a.id) ?? [] }));
 };
 
-// COALESCE no detail: os dois callbacks da Twilio (status final da ligação e resultado do AMD)
-// chegam em ordem não garantida — sem isso, o que chegasse por último apagava o do outro.
 export const updateNotificationStatus = (id: number, status: string, detail: string | null = null) =>
   pool
-    .query<Notification>(
-      'UPDATE notifications SET status = $2, detail = COALESCE($3, detail) WHERE id = $1 RETURNING *',
-      [id, status, detail],
-    )
-    .then((r) => r.rows[0]);
-
-export const updateNotificationDetail = (id: number, detail: string) =>
-  pool
-    .query<Notification>('UPDATE notifications SET detail = $2 WHERE id = $1 RETURNING *', [id, detail])
+    .query<Notification>('UPDATE notifications SET status = $2, detail = $3 WHERE id = $1 RETURNING *', [
+      id,
+      status,
+      detail,
+    ])
     .then((r) => r.rows[0]);
 
 export interface Firmware {
