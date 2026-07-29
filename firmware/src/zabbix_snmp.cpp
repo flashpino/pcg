@@ -15,8 +15,15 @@ static const char* SNMP_COMMUNITY = "public";
 static WiFiUDP udp;
 static SNMPAgent snmp(SNMP_COMMUNITY);
 
-static int tempX10 = 0;
-static int humX10 = 0;
+// Sentinela de "sem leitura". -999.9 (depois do multiplicador 0.1 no Zabbix) é impossível
+// pra temperatura e umidade reais, então nenhum gatilho de faixa confunde defeito com
+// medição. 0 não serve: 0°C é plausível e dispararia "temperatura baixa", trocando um
+// alerta de hardware por um alerta ambiental enganoso — exatamente o dado falso que o
+// aparelho não pode emitir. Vale também no pré-boot, antes da primeira leitura.
+static const int NO_DATA_X10 = -9999;
+
+static int tempX10 = NO_DATA_X10;
+static int humX10 = NO_DATA_X10;
 static int uptimeSVar = 0;
 static int rssiVar = 0;
 static char tempStr[8] = "---";
@@ -53,8 +60,8 @@ void update(const net::Event& evt, uint32_t uptimeSeconds) {
     // um host perfeitamente saudável servindo uma temperatura de horas atrás como se fosse
     // atual (nodata() nunca dispara: não falta dado, o dado é velho). Volta pro mesmo
     // estado "sem leitura" do pré-boot: nunca servir número inventado.
-    tempX10 = 0;
-    humX10 = 0;
+    tempX10 = NO_DATA_X10;
+    humX10 = NO_DATA_X10;
     snprintf(tempStr, sizeof(tempStr), "---");
     snprintf(humStr, sizeof(humStr), "---");
   }

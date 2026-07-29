@@ -15,7 +15,8 @@ void begin();
 // Atualiza os valores expostos via SNMP. RSSI e uptime são sempre atualizados.
 // Temperatura/umidade seguem três estados, nunca um número inventado:
 //   evt.hasReading   -> valor novo
-//   evt.sensorStale  -> zerados (INTEGER 0, STRING "---"), igual ao pré-boot
+//   evt.sensorStale  -> sentinela de "sem leitura" (INTEGER -9999, STRING "---"),
+//                       igual ao pré-boot — valor impossível, nunca um plausível
 //   nenhum dos dois  -> mantém o último valor (falha isolada de leitura, <30s)
 void update(const net::Event& evt, uint32_t uptimeSeconds);
 
