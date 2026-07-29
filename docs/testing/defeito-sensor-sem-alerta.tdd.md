@@ -114,8 +114,16 @@ Builds: `npm run build` (tsc) verde em `server/` e em `web/`.
   testes de `voiceTwiml`/`spNow` **nunca tinham executado** — morriam na coleta. Suíte foi de 67
   para 75 testes, todos verdes.
 
-  Continua valendo como dívida à parte: `influx.ts` construir o cliente no import é o que torna
-  qualquer módulo que o alcance intestável sem mock. A correção de fundo é adiar/injetar o cliente.
+  **Dívida de fundo também quitada**, logo em seguida: `influx.ts` construía o cliente no corpo do
+  módulo, e em JS importar um módulo executa o corpo dele — então bastava um `import` transitivo pra
+  disparar a construção, mesmo sem ninguém chamar função nenhuma do Influx. Agora usa `getApis()`
+  preguiçoso, o mesmo padrão que `getBoss()` em `notifier.ts` já aplicava ao PgBoss. O `vi.mock` de
+  `notifier.test.ts` foi removido junto — era andaime da armadilha, não necessidade do teste — e os
+  8 testes seguem verdes sem ele. O mock em `alertService.test.ts` permanece, mas por outro motivo:
+  lá `queryLatestReadings` é de fato chamada pelo código sob teste.
+
+  Verificado no build: `import('./dist/services/influx.js')` sem env algum agora resolve normalmente
+  (antes lançava), e a primeira chamada real com env constrói o cliente sob demanda.
 - **Sem relatório de cobertura**: o projeto não tem script `test:coverage` nem `@vitest/coverage-*`
   instalado. Não foi adicionada dependência só para preencher este passo.
 - **`healthyStreak` continua em memória** (ver comentário em `alertService.ts`): reinício do servidor

@@ -1,11 +1,10 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { spNow, voiceTwiml } from './notifier.js';
 
-// Aqui só se testa função pura, mas importar notifier.js arrasta alertService.js -> influx.js, que
-// constrói o cliente do InfluxDB no carregamento do módulo e lança "No url specified!" sem
-// INFLUX_URL. O `npm test` não passa --env-file (só o `dev` passa), então a variável não existe no
-// process.env por mais preenchida que esteja no .env/EasyPanel. Mesmo mock de alertService.test.ts.
-vi.mock('./influx.js', () => ({ queryLatestReadings: vi.fn(async () => new Map()) }));
+// Sem mock nenhum: este arquivo testa só função pura, e desde que influx.ts passou a construir o
+// cliente sob demanda (getApis) importar a cadeia notifier -> alertService -> influx não dispara
+// mais conexão alguma. Se voltar a exigir mock aqui, é sinal de que alguém pôs efeito colateral no
+// corpo de um módulo de novo.
 
 describe('voiceTwiml', () => {
   it('põe pausa entre as frases do alerta', () => {

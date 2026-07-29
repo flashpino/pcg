@@ -1,8 +1,22 @@
-import { InfluxDB, Point } from '@influxdata/influxdb-client';
+import { InfluxDB, Point, type QueryApi, type WriteApi } from '@influxdata/influxdb-client';
 
-const client = new InfluxDB({ url: process.env.INFLUX_URL!, token: process.env.INFLUX_TOKEN! });
-const writeApi = client.getWriteApi(process.env.INFLUX_ORG!, process.env.INFLUX_BUCKET!, 'ms');
-const queryApi = client.getQueryApi(process.env.INFLUX_ORG!);
+// Preguiçoso, mesmo padrão de getBoss() em notifier.ts. Construir o cliente no corpo do módulo
+// fazia `import './influx.js'` estourar "No url specified!" sem INFLUX_URL no process.env — e como
+// alertService.ts importa este arquivo, QUALQUER teste que alcançasse alertService por transitivo
+// (mesmo pra testar só função pura) morria na coleta. Foi assim que notifier.test.ts passou tempo
+// indeterminado sem executar nenhum dos seus 8 testes, com um erro que apontava pro Influx.
+// Importar agora não custa nada; o cliente nasce no primeiro uso real.
+let apis: { write: WriteApi; query: QueryApi } | undefined;
+function getApis(): { write: WriteApi; query: QueryApi } {
+  if (!apis) {
+    const client = new InfluxDB({ url: process.env.INFLUX_URL!, token: process.env.INFLUX_TOKEN! });
+    apis = {
+      write: client.getWriteApi(process.env.INFLUX_ORG!, process.env.INFLUX_BUCKET!, 'ms'),
+      query: client.getQueryApi(process.env.INFLUX_ORG!),
+    };
+  }
+  return apis;
+}
 
 export interface Reading {
   temp: number;
@@ -22,11 +36,11 @@ export function writeReadings(clientId: number | null, sensorId: number, reading
       .floatField('rssi', r.rssi)
       .timestamp(new Date(now - r.ago_ms));
     if (clientId !== null) point.tag('client_id', String(clientId));
-    writeApi.writePoint(point);
+    getApis().write.writePoint(point);
   }
 }
 
-export const flushInflux = () => writeApi.flush();
+export const flushInflux = () => getApis().write.flush();
 
 export interface ReadingPoint {
   time: string;
@@ -50,7 +64,7 @@ export function queryReadings(sensorId: number, range: string): Promise<ReadingP
       |> pivot(rowKey: ["_time"], columnKey: ["_field"], valueColumn: "_value")
       |> sort(columns: ["_time"])
   `;
-  return queryApi.collectRows<ReadingPoint>(flux, (values, tableMeta) => {
+  return getApis().query.collectRows<ReadingPoint>(flux, (values, tableMeta) => {
     const row = tableMeta.toObject(values) as Record<string, unknown>;
     return {
       time: row._time as string,
@@ -89,7 +103,7 @@ export async function queryLatestReadings(sensorIds: number[]): Promise<Map<numb
       |> group(columns: ["sensor_id"])
       |> pivot(rowKey: ["_time"], columnKey: ["_field"], valueColumn: "_value")
   `;
-  await queryApi.collectRows(flux, (values, tableMeta) => {
+  await getApis().query.collectRows(flux, (values, tableMeta) => {
     const row = tableMeta.toObject(values) as Record<string, unknown>;
     result.set(Number(row.sensor_id), {
       temperature: (row.temperature as number) ?? null,
