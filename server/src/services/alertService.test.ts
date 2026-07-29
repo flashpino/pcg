@@ -8,11 +8,13 @@ import {
   isBackInBounds,
   notifyAdminsFirmwareUpdate,
   renotifyValue,
+  sendContactTest,
+  sendTest,
   shouldRenotify,
   violatedBound,
 } from './alertService.js';
 import * as queries from '../db/queries.js';
-import { enqueueWhatsapp } from './notifier.js';
+import { enqueueVoice, enqueueWhatsapp } from './notifier.js';
 
 // Só o necessário pros caminhos de notificação de admin — o resto do arquivo testa função pura.
 vi.mock('../db/queries.js', () => ({
@@ -325,5 +327,189 @@ describe('shouldRenotify', () => {
     const foraDoCooldown = new Date('2026-01-01T10:59:00Z');
     expect(shouldRenotify(dentroDoCooldown, 60, now)).toBe(false);
     expect(shouldRenotify(foraDoCooldown, 60, now)).toBe(true);
+  });
+});
+
+// Contato com os dois canais ligados e janela sempre aberta (sem dias/horário restritos), pra
+// que o teste exercite o caminho de envio e não o de skipped_pref/skipped_window.
+const contatoAtivo = {
+  id: 5,
+  client_id: 1,
+  name: 'Fulano',
+  phone: '+5511999999999',
+  channel_voice: true,
+  channel_whatsapp: true,
+  timezone: 'America/Sao_Paulo',
+  active: true,
+  created_at: '2026-01-01',
+} as queries.Contact;
+
+const prefLiberada = (alert_type: queries.ContactAlertPref['alert_type'], renotify_minutes = 60) =>
+  ({
+    contact_id: 5,
+    alert_type,
+    enabled: true,
+    days_of_week: [0, 1, 2, 3, 4, 5, 6],
+    window_start: null,
+    window_end: null,
+    renotify_minutes,
+  }) as queries.ContactAlertPref;
+
+describe('evaluateConnectivity — fire e renotify', () => {
+  const sensor = { id: 7, name: 'Sensor A', local: 'Sala 1', client_id: 1, offline_after_seconds: 300 } as queries.Sensor;
+
+  beforeEach(() => vi.clearAllMocks());
+
+  it('sensor offline sem alerta firing dispara alerta e avisa contato e admin', async () => {
+    vi.mocked(queries.getFiringAlert).mockResolvedValue(undefined as unknown as queries.Alert);
+    vi.mocked(queries.createAlert).mockResolvedValue({ id: 70 } as queries.Alert);
+    vi.mocked(queries.listContacts).mockResolvedValue([contatoAtivo]);
+    vi.mocked(queries.listContactAlertPrefsByClient).mockResolvedValue([prefLiberada('connectivity')]);
+    vi.mocked(queries.createNotification).mockResolvedValue({ id: 1 } as never);
+    vi.mocked(queries.listAdminsWithPhone).mockResolvedValue([{ id: 3, email: 'a@x', phone: '+5511888888888' }]);
+
+    await evaluateConnectivity(sensor, true);
+
+    expect(queries.createAlert).toHaveBeenCalledWith(7, 'connectivity', null, expect.any(String));
+    // contato + admin
+    expect(enqueueWhatsapp).toHaveBeenCalledTimes(2);
+    // conectividade nunca liga — voz é exclusiva de temperatura
+    expect(enqueueVoice).not.toHaveBeenCalled();
+  });
+
+  // createAlert devolve vazio quando já existe alerta firing pro par (sensor, tipo): sem esse
+  // guard, uma corrida entre duas varreduras notificaria o cliente duas vezes pelo mesmo evento.
+  it('não notifica ninguém quando createAlert não devolve alerta', async () => {
+    vi.mocked(queries.getFiringAlert).mockResolvedValue(undefined as unknown as queries.Alert);
+    vi.mocked(queries.createAlert).mockResolvedValue(undefined as unknown as queries.Alert);
+    vi.mocked(queries.listContacts).mockResolvedValue([contatoAtivo]);
+    vi.mocked(queries.listContactAlertPrefsByClient).mockResolvedValue([prefLiberada('connectivity')]);
+
+    await evaluateConnectivity(sensor, true);
+
+    expect(enqueueWhatsapp).not.toHaveBeenCalled();
+  });
+
+  it('continua offline com alerta já firing renotifica o contato, mas não o admin', async () => {
+    vi.mocked(queries.getFiringAlert).mockResolvedValue({ id: 70 } as queries.Alert);
+    vi.mocked(queries.listContacts).mockResolvedValue([contatoAtivo]);
+    vi.mocked(queries.listContactAlertPrefsByClient).mockResolvedValue([prefLiberada('connectivity')]);
+    vi.mocked(queries.getLastNotification).mockResolvedValue(undefined as never);
+    vi.mocked(queries.createNotification).mockResolvedValue({ id: 2 } as never);
+
+    await evaluateConnectivity(sensor, true);
+
+    expect(queries.createAlert).not.toHaveBeenCalled();
+    expect(enqueueWhatsapp).toHaveBeenCalledTimes(1);
+  });
+
+  // O cooldown do renotify (shouldRenotify) tem que valer também aqui: sensor offline há horas
+  // não pode virar uma mensagem por varredura, ou seja, uma a cada 60s.
+  it('renotify respeita o cooldown — notificação recente não repete', async () => {
+    vi.mocked(queries.getFiringAlert).mockResolvedValue({ id: 70 } as queries.Alert);
+    vi.mocked(queries.listContacts).mockResolvedValue([contatoAtivo]);
+    vi.mocked(queries.listContactAlertPrefsByClient).mockResolvedValue([prefLiberada('connectivity')]);
+    vi.mocked(queries.getLastNotification).mockResolvedValue({ created_at: new Date().toISOString() } as never);
+
+    await evaluateConnectivity(sensor, true);
+
+    expect(enqueueWhatsapp).not.toHaveBeenCalled();
+  });
+});
+
+describe('sendTest', () => {
+  const sensor = {
+    id: 7,
+    name: 'Sensor A',
+    local: 'Sala 1',
+    client_id: 1,
+    last_seen_at: '2026-01-05T12:00:00Z',
+  } as queries.Sensor;
+
+  beforeEach(() => vi.clearAllMocks());
+
+  it('sensor não reivindicado (sem cliente) não envia nada', async () => {
+    await sendTest({ ...sensor, client_id: null } as queries.Sensor);
+
+    expect(queries.createResolvedAlert).not.toHaveBeenCalled();
+    expect(enqueueWhatsapp).not.toHaveBeenCalled();
+  });
+
+  // O aviso vem ANTES do teste: quem recebe uma ligação automática sem contexto acha que é
+  // emergência real. Duas mensagens de WhatsApp, nessa ordem.
+  it('manda o aviso antes do teste em si', async () => {
+    vi.mocked(queries.listContacts).mockResolvedValue([contatoAtivo]);
+    vi.mocked(queries.listContactAlertPrefsByClient).mockResolvedValue([prefLiberada('test')]);
+    vi.mocked(queries.createNotification).mockResolvedValue({ id: 3 } as never);
+
+    await sendTest(sensor);
+
+    expect(queries.createResolvedAlert).toHaveBeenCalledWith(7, 'test', expect.any(String));
+    expect(enqueueWhatsapp).toHaveBeenCalledTimes(2); // aviso + teste
+  });
+
+  // Só adiciona o canal de voz quando o template 'test' tem texto de voz — senão notifyContacts
+  // enfileiraria uma ligação com texto undefined.
+  it('só liga quando o template de teste tem texto de voz', async () => {
+    vi.mocked(queries.listContacts).mockResolvedValue([contatoAtivo]);
+    vi.mocked(queries.listContactAlertPrefsByClient).mockResolvedValue([prefLiberada('test')]);
+    vi.mocked(queries.createNotification).mockResolvedValue({ id: 3 } as never);
+
+    await sendTest(sensor);
+    expect(enqueueVoice).not.toHaveBeenCalled(); // template padrão do mock tem voice: null
+
+    vi.clearAllMocks();
+    vi.mocked(queries.getMessageTemplate).mockResolvedValue({ whatsapp: 'oi', voice: 'alô' } as never);
+    vi.mocked(queries.listContacts).mockResolvedValue([contatoAtivo]);
+    vi.mocked(queries.listContactAlertPrefsByClient).mockResolvedValue([prefLiberada('test')]);
+    vi.mocked(queries.createNotification).mockResolvedValue({ id: 3 } as never);
+
+    await sendTest(sensor);
+    expect(enqueueVoice).toHaveBeenCalledTimes(1);
+  });
+
+  it('contato inativo não recebe teste nenhum', async () => {
+    vi.mocked(queries.listContacts).mockResolvedValue([{ ...contatoAtivo, active: false }]);
+    vi.mocked(queries.listContactAlertPrefsByClient).mockResolvedValue([prefLiberada('test')]);
+
+    await sendTest(sensor);
+
+    expect(enqueueWhatsapp).not.toHaveBeenCalled();
+  });
+});
+
+describe('sendContactTest', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('cliente sem sensor cadastrado falha com 400 em vez de estourar depois', async () => {
+    vi.mocked(queries.listSensors).mockResolvedValue([]);
+
+    await expect(sendContactTest(contatoAtivo)).rejects.toMatchObject({ statusCode: 400 });
+  });
+
+  // Regressão de comportamento: o botão "Testar canal" antes ignorava enabled/janela por
+  // completo. Agora passa pela mesma engrenagem do alerta real.
+  it('respeita a pref desligada do contato — grava skipped_pref e não enfileira', async () => {
+    vi.mocked(queries.listSensors).mockResolvedValue([{ id: 7, name: 'Sensor A', local: null } as queries.Sensor]);
+    vi.mocked(queries.listContactAlertPrefsByClient).mockResolvedValue([
+      { ...prefLiberada('test'), enabled: false },
+    ]);
+    vi.mocked(queries.createNotification).mockResolvedValue({ id: 4 } as never);
+
+    await sendContactTest(contatoAtivo);
+
+    expect(queries.createNotification).toHaveBeenCalledWith(42, 5, 'whatsapp', 'skipped_pref');
+    expect(enqueueWhatsapp).not.toHaveBeenCalled();
+  });
+
+  it('contato com pref liberada recebe aviso e teste', async () => {
+    vi.mocked(queries.listSensors).mockResolvedValue([{ id: 7, name: 'Sensor A', local: null } as queries.Sensor]);
+    vi.mocked(queries.listContactAlertPrefsByClient).mockResolvedValue([prefLiberada('test')]);
+    vi.mocked(queries.createNotification).mockResolvedValue({ id: 4 } as never);
+
+    await sendContactTest(contatoAtivo);
+
+    expect(enqueueWhatsapp).toHaveBeenCalledTimes(2); // aviso + teste
+    expect(enqueueWhatsapp).toHaveBeenCalledWith(expect.objectContaining({ phone: '+5511999999999' }));
   });
 });

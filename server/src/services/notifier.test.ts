@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
-import { spNow, voiceTwiml } from './notifier.js';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { getEvolutionConnectionState, spNow, voiceTwiml } from './notifier.js';
 
 // Sem mock nenhum: este arquivo testa só função pura, e desde que influx.ts passou a construir o
 // cliente sob demanda (getApis) importar a cadeia notifier -> alertService -> influx não dispara
@@ -47,5 +47,29 @@ describe('spNow', () => {
   it('meia-noite exata em São Paulo', () => {
     // 2026-01-05 03:00 UTC = 2026-01-05 00:00 -03:00 (segunda-feira)
     expect(spNow(new Date('2026-01-05T03:00:00Z'))).toEqual({ dow: '1', time: '00:00' });
+  });
+});
+
+// Alimenta o indicador de WhatsApp do painel. Evolution fora do ar não pode derrubar a rota que
+// chama isto — qualquer falha vira 'error', que a UI mostra como desconectado.
+describe('getEvolutionConnectionState', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('devolve o corpo da Evolution quando ela responde ok', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({ state: 'open' }) })));
+
+    expect(await getEvolutionConnectionState()).toEqual({ state: 'open' });
+  });
+
+  it('HTTP de erro vira state error em vez de estourar', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: false, json: async () => ({}) })));
+
+    expect(await getEvolutionConnectionState()).toEqual({ state: 'error' });
+  });
+
+  it('Evolution inalcançável (fetch rejeita) vira state error', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('ECONNREFUSED'); }));
+
+    expect(await getEvolutionConnectionState()).toEqual({ state: 'error' });
   });
 });
