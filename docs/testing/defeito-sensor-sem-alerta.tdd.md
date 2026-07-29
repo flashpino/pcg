@@ -104,10 +104,18 @@ Builds: `npm run build` (tsc) verde em `server/` e em `web/`.
 
 ## Lacunas conhecidas
 
-- **`notifier.test.ts` falha na coleta**, não nos testes: `influx.ts` instancia o cliente no
-  carregamento do módulo e `INFLUX_URL` não existe fora do `--env-file`. Verificado por `git stash`:
-  falha idêntica no HEAD anterior (`7bbaa57`), sem relação com esta mudança. Fica como pendência à
-  parte — o conserto é injetar/adiar o cliente do Influx, não mexer no teste.
+- ~~**`notifier.test.ts` falha na coleta**~~ — **resolvido em `4ff4cd2`.** A causa não era variável
+  faltando na configuração: `INFLUX_URL` está no `.env` e no EasyPanel. É que `npm test` é só
+  `vitest run`, sem o `--env-file=../.env` que o script `dev` passa (e não há `vitest.config.*`
+  suprindo isso). Node não lê `.env` sozinho, então `process.env.INFLUX_URL` fica `undefined` e o
+  `new InfluxDB(...)` de `influx.ts` — construído no carregamento do módulo — lança antes de
+  qualquer teste rodar. Corrigido com o mesmo `vi.mock('./influx.js')` que `alertService.test.ts` já
+  usava; teste de função pura não deve depender de `.env` nenhum. Efeito colateral revelado: os 8
+  testes de `voiceTwiml`/`spNow` **nunca tinham executado** — morriam na coleta. Suíte foi de 67
+  para 75 testes, todos verdes.
+
+  Continua valendo como dívida à parte: `influx.ts` construir o cliente no import é o que torna
+  qualquer módulo que o alcance intestável sem mock. A correção de fundo é adiar/injetar o cliente.
 - **Sem relatório de cobertura**: o projeto não tem script `test:coverage` nem `@vitest/coverage-*`
   instalado. Não foi adicionada dependência só para preencher este passo.
 - **`healthyStreak` continua em memória** (ver comentário em `alertService.ts`): reinício do servidor
