@@ -1,13 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api.js';
-
-interface Sensor {
-  id: number;
-  name: string;
-  mac: string;
-  last_seen_at: string | null;
-  offline_after_seconds: number;
-}
+import { DeviceCard, type DeviceCardData } from '../components/DeviceCard.js';
+import { ClientSensorDetailPage } from './ClientSensorDetailPage.js';
 
 interface Alert {
   id: number;
@@ -19,19 +13,15 @@ interface Alert {
   resolved_at: string | null;
 }
 
-function isOnline(sensor: Sensor): boolean {
-  if (!sensor.last_seen_at) return false;
-  return Date.now() - new Date(sensor.last_seen_at).getTime() <= sensor.offline_after_seconds * 1000;
-}
-
 export function ClientPortalPage() {
-  const [sensors, setSensors] = useState<Sensor[]>([]);
+  const [sensors, setSensors] = useState<DeviceCardData[]>([]);
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [openSensorId, setOpenSensorId] = useState<number | null>(null);
 
   useEffect(() => {
     const load = () => {
-      api.get<Sensor[]>('/api/client/sensors').then(setSensors).catch((err) => setError(err.message));
+      api.get<DeviceCardData[]>('/api/client/sensors').then(setSensors).catch((err) => setError(err.message));
       api.get<Alert[]>('/api/client/alerts').then(setAlerts).catch((err) => setError(err.message));
     };
     load();
@@ -39,21 +29,24 @@ export function ClientPortalPage() {
     return () => clearInterval(id);
   }, []);
 
+  if (openSensorId !== null) {
+    const sensor = sensors.find((s) => s.id === openSensorId);
+    return (
+      <ClientSensorDetailPage
+        sensorId={openSensorId}
+        sensorName={sensor?.local ?? sensor?.name ?? ''}
+        onBack={() => setOpenSensorId(null)}
+      />
+    );
+  }
+
   return (
     <main>
       <h2>Meus sensores</h2>
       {error && <p className="error">{error}</p>}
       <div className="device-grid">
         {sensors.map((s) => (
-          <div className="device-card" key={s.id}>
-            <div className="device-card-header">
-              <strong>{s.name}</strong>
-              <span className={isOnline(s) ? 'status-online' : 'status-offline'}>
-                {isOnline(s) ? '● online' : '○ offline'}
-              </span>
-            </div>
-            <small>{s.mac}</small>
-          </div>
+          <DeviceCard key={s.id} device={s} onClick={() => setOpenSensorId(s.id)} />
         ))}
       </div>
 
