@@ -7,7 +7,7 @@ import {
   listSensorIdsWithFiringAlert,
   listSensors,
 } from '../db/queries.js';
-import { countSensorStatus, readingForDisplay, resolveOnlineSince } from '../services/dashboardService.js';
+import { buildDeviceView, countSensorStatus } from '../services/dashboardService.js';
 import { queryLatestReadings } from '../services/influx.js';
 
 const RECENT_EVENTS_LIMIT = 20;
@@ -32,27 +32,17 @@ export async function dashboardRoutes(app: FastifyInstance): Promise<void> {
     ]);
 
     const clientNames = new Map(clients.map((c) => [c.id, c.name]));
-    const { online, offline, activeClientIds, onlineById } = countSensorStatus(claimed, now);
+    const { online, offline, activeClientIds } = countSensorStatus(claimed, now);
 
-    const devices = claimed.map((sensor) => {
-      const reading = latestReadings.get(sensor.id);
-      const sensorOnline = onlineById.get(sensor.id)!;
-      const hardwareFault = hardwareFaults.has(sensor.id);
-      return {
-        id: sensor.id,
-        name: sensor.name,
-        local: sensor.local,
-        mac: sensor.mac,
-        client_id: sensor.client_id,
-        client_name: clientNames.get(sensor.client_id!) ?? '—',
-        online: sensorOnline,
-        online_since: sensorOnline ? resolveOnlineSince(sensor, onlineSince.get(sensor.id)) : null,
-        // Device se comunicando, mas sem leitura válida (DHT travado) — distinto de offline.
-        hardware_fault: hardwareFault,
-        // Nem offline nem defeito de hardware expõem leitura: ver readingForDisplay.
-        ...readingForDisplay(reading, sensorOnline, hardwareFault),
-      };
-    });
+    const devices = claimed.map((sensor) => ({
+      ...buildDeviceView(sensor, now, {
+        reading: latestReadings.get(sensor.id),
+        lastResolvedAt: onlineSince.get(sensor.id),
+        hardwareFault: hardwareFaults.has(sensor.id),
+      }),
+      client_id: sensor.client_id,
+      client_name: clientNames.get(sensor.client_id!) ?? '—',
+    }));
 
     return {
       kpis: { activeClients: activeClientIds.size, sensorsOnline: online, sensorsOffline: offline, alerts7d },
