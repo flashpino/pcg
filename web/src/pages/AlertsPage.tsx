@@ -31,6 +31,9 @@ const STATUS_LABELS: Record<string, string> = {
   failed: 'falhou',
   skipped_window: 'fora da janela',
   skipped_pref: 'desativado',
+  // Alerta operacional (hardware/reinício/firmware) sem nenhum admin com telefone cadastrado.
+  // Sem esta linha o alerta aparecia sem notificação nenhuma, igual a uma fila travada.
+  skipped_no_admin: 'nenhum admin com telefone cadastrado',
   // Resultado final da ligação de voz, reportado pela Twilio (server/src/routes/twilio.ts).
   // 'completed' NÃO é sinônimo de atendida: a caixa postal da operadora também completa a
   // ligação. Quem atendeu (pessoa x secretária) aparece na coluna Detalhe, vinda do AMD.
@@ -47,6 +50,7 @@ const TYPE_LABELS: Record<string, string> = {
   reboot: 'reinício',
   firmware: 'firmware',
   test: 'teste',
+  hardware: 'defeito de sensor',
 };
 
 interface AlertsResponse {
@@ -129,7 +133,8 @@ export function AlertsPage() {
               <tbody>
                 {a.notifications.map((n) => (
                   <tr key={n.id}>
-                    <td>{n.contact_name ?? n.admin_email ?? `#${n.contact_id}`}</td>
+                    {/* Sem contato e sem admin é o skipped_no_admin: não há destinatário a nomear. */}
+                    <td>{n.contact_name ?? n.admin_email ?? (n.contact_id === null ? '—' : `#${n.contact_id}`)}</td>
                     <td>{n.channel}</td>
                     <td>{STATUS_LABELS[n.status] ?? n.status}</td>
                     <td>{n.detail ?? '-'}</td>

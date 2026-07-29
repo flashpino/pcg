@@ -50,11 +50,18 @@ export interface DisplayReading {
 // e devolvê-la faz um dado velho passar por atual — o painel mostraria a temperatura de horas
 // atrás como se fosse a de agora. Mascarar aqui, na origem, impede qualquer consumidor da API de
 // vazar isso por engano, em vez de depender de cada tela lembrar de checar `online`.
+//
+// Defeito de hardware é o MESMO dado fantasma por outro caminho, e o mais traiçoeiro dos dois: o
+// device segue mandando heartbeat, então last_seen_at fica fresco e ele conta como online — quem
+// parou foi só a leitura. Sem esta condição o painel exibia o chip de defeito e, ao lado, a última
+// temperatura válida, como se ainda houvesse medição. Firmware (clearDashboardReading) e SNMP
+// (sentinela -9999) já deixaram de servir número nesse estado; o painel era o que faltava.
 export function readingForDisplay(
   reading: { temperature: number | null; humidity: number | null; rssi: number | null; time: string } | undefined,
   online: boolean,
+  hardwareFault = false,
 ): DisplayReading {
-  if (!online || !reading) return { temperature: null, humidity: null, rssi: null, reading_time: null };
+  if (!online || hardwareFault || !reading) return { temperature: null, humidity: null, rssi: null, reading_time: null };
   return {
     temperature: reading.temperature,
     humidity: reading.humidity,

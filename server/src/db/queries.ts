@@ -387,10 +387,11 @@ export const createNotification = (
     .then((r) => r.rows[0]);
 
 // Alerta de hardware vai pra um admin (users), não pra um contato de cliente — mesma tabela
-// notifications, só troca qual FK é preenchida.
+// notifications, só troca qual FK é preenchida. adminId null = ninguém pra notificar (status
+// skipped_no_admin): a linha existe só pra registrar por que nada saiu.
 export const createAdminNotification = (
   alertId: number,
-  adminId: number,
+  adminId: number | null,
   channel: Notification['channel'],
   status = 'queued',
   detail: string | null = null,

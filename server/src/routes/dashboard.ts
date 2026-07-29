@@ -37,6 +37,7 @@ export async function dashboardRoutes(app: FastifyInstance): Promise<void> {
     const devices = claimed.map((sensor) => {
       const reading = latestReadings.get(sensor.id);
       const sensorOnline = onlineById.get(sensor.id)!;
+      const hardwareFault = hardwareFaults.has(sensor.id);
       return {
         id: sensor.id,
         name: sensor.name,
@@ -47,9 +48,9 @@ export async function dashboardRoutes(app: FastifyInstance): Promise<void> {
         online: sensorOnline,
         online_since: sensorOnline ? resolveOnlineSince(sensor, onlineSince.get(sensor.id)) : null,
         // Device se comunicando, mas sem leitura válida (DHT travado) — distinto de offline.
-        hardware_fault: hardwareFaults.has(sensor.id),
-        // Offline não expõe leitura nenhuma: ver readingForDisplay.
-        ...readingForDisplay(reading, sensorOnline),
+        hardware_fault: hardwareFault,
+        // Nem offline nem defeito de hardware expõem leitura: ver readingForDisplay.
+        ...readingForDisplay(reading, sensorOnline, hardwareFault),
       };
     });
 
