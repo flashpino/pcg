@@ -235,19 +235,41 @@ async function notifyAdminsHardware(alert: Alert, kind: 'fire' | 'resolve', vars
 // Só fire/resolve, sem renotify: o heartbeat chega a cada 60s e repetir encheria o WhatsApp do time.
 export async function evaluateHardware(sensor: Sensor, stale: boolean): Promise<void> {
   const firing = await getFiringAlert(sensor.id, 'hardware');
-  const transition = decideBinaryTransition(stale, Boolean(firing));
-  if (transition === 'fire') {
+
+  if (stale) {
+    healthyStreak.delete(sensor.id);
+    if (firing) return;  // já firing: sem renotify (heartbeat é de 60s)
     const vars = await hardwareVars(sensor);
     const texts = await renderMessage('hardware_fire', vars);
     const alert = await createAlert(sensor.id, 'hardware', null, texts.whatsapp);
     if (alert) await notifyAdminsHardware(alert, 'fire', vars);
     return;
   }
-  if (transition === 'resolve') {
-    await resolveAlert(firing!.id);
-    await notifyAdminsHardware(firing!, 'resolve', await hardwareVars(sensor));
+
+  if (!firing) {
+    healthyStreak.delete(sensor.id);
+    return;
   }
+
+  // Um DHT moribundo entrega uma leitura isolada de vez em quando; resolver na primeira delas
+  // fazia o alerta alternar fire/resolve a cada ciclo, com WhatsApp nos dois sentidos. Só uma
+  // sequência de ingests saudáveis conta como recuperação de verdade.
+  const streak = (healthyStreak.get(sensor.id) ?? 0) + 1;
+  if (streak < HEALTHY_STREAK_TO_RESOLVE) {
+    healthyStreak.set(sensor.id, streak);
+    return;
+  }
+  healthyStreak.delete(sensor.id);
+  await resolveAlert(firing.id);
+  await notifyAdminsHardware(firing, 'resolve', await hardwareVars(sensor));
 }
+
+const HEALTHY_STREAK_TO_RESOLVE = 3;
+
+// ponytail: em memória — reinício do server zera a contagem, atrasando um resolve em até ~3 min
+// (erra pro lado seguro, nunca resolve cedo demais). Só vira coluna no banco se o server passar a
+// rodar em mais de uma instância, aí cada uma contaria o seu streak e nenhuma fecharia o alerta.
+const healthyStreak = new Map<number, number>();
 
 async function hardwareVars(sensor: Sensor): Promise<Record<string, string | number>> {
   return {
@@ -346,6 +368,10 @@ export async function evaluateConnectivity(sensor: Sensor, offline: boolean): Pr
 
   if (transition === 'resolve') {
     await resolveAlert(firing!.id);
+    // A comunicação voltou de fato (por isso o registro resolve), mas com o sensor quebrado não
+    // houve retomada de monitoramento: anunciar "voltou a reportar" ao cliente é falsa
+    // tranquilização. Quem precisa saber já recebeu o alerta de hardware.
+    if (await getFiringAlert(sensor.id, 'hardware')) return;
     const texts = await renderMessage('connectivity_resolve', vars);
     await notifyContacts(firing!, contacts, prefs, 'connectivity', ['whatsapp'], texts, 'resolve');
     await notifyAdminsHardware(firing!, 'resolve', vars);
