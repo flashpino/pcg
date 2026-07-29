@@ -1,7 +1,15 @@
 import bcrypt from 'bcryptjs';
 import type { FastifyInstance } from 'fastify';
-import { getClientByEmail, getSensor, listAlertsByClient, listSensors } from '../db/queries.js';
-import { queryReadings } from '../services/influx.js';
+import {
+  getClientByEmail,
+  getLastConnectivityResolutions,
+  getSensor,
+  listAlertsByClient,
+  listSensorIdsWithFiringAlert,
+  listSensors,
+} from '../db/queries.js';
+import { buildDeviceView } from '../services/dashboardService.js';
+import { queryLatestReadings, queryReadings } from '../services/influx.js';
 
 // Todas as rotas aqui abaixo (exceto /login) só são alcançáveis com role: 'client' no JWT —
 // ver checagem de role em index.ts. sub do token é sempre o client_id, nunca confiar num
@@ -28,9 +36,25 @@ export async function clientPortalRoutes(app: FastifyInstance): Promise<void> {
     return { ok: true };
   });
 
+  // Mesmo formato de card do Dashboard admin (ver DeviceCard no front) — só que restrito aos
+  // sensores do cliente logado, via buildDeviceView (services/dashboardService.ts).
   app.get('/api/client/sensors', async (req) => {
     const { sub } = req.user as { sub: number };
-    return listSensors(sub);
+    const now = Date.now();
+    const sensors = await listSensors(sub);
+    const sensorIds = sensors.map((s) => s.id);
+    const [latestReadings, onlineSince, hardwareFaults] = await Promise.all([
+      queryLatestReadings(sensorIds),
+      getLastConnectivityResolutions(sensorIds),
+      listSensorIdsWithFiringAlert('hardware'),
+    ]);
+    return sensors.map((sensor) =>
+      buildDeviceView(sensor, now, {
+        reading: latestReadings.get(sensor.id),
+        lastResolvedAt: onlineSince.get(sensor.id),
+        hardwareFault: hardwareFaults.has(sensor.id),
+      }),
+    );
   });
 
   app.get<{ Params: { id: string }; Querystring: { range?: string } }>(
