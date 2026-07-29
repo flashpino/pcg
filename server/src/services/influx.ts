@@ -88,6 +88,13 @@ export interface LatestReading {
 // sempre do mesmo Point (mesmo timestamp, ver writeReadings), então _time é a chave certa pra
 // juntar os 3 campos na mesma linha sem risco de misturar valores de instantes diferentes.
 // sensorIds vem de listSensors() (nosso próprio banco), não de input do usuário — sem injection.
+//
+// range de 24h (não 30d): todo chamador só quer "leitura recente" — readingForDisplay já mascara
+// a leitura de qualquer sensor offline (que por definição está sem reportar há bem menos que 24h,
+// tipicamente minutos via offline_after_seconds), e sendTest/connectivityVars documentam '--'
+// como o valor esperado pra "sem leitura recente". 30d nunca mudava o resultado observável, só
+// obrigava o Influx a varrer e ordenar até 30x mais pontos por sensor a cada card carregado —
+// era a causa do Dashboard/Portal do Cliente demorando pra aparecer em produção.
 export async function queryLatestReadings(sensorIds: number[]): Promise<Map<number, LatestReading>> {
   const result = new Map<number, LatestReading>();
   if (sensorIds.length === 0) return result;
@@ -95,7 +102,7 @@ export async function queryLatestReadings(sensorIds: number[]): Promise<Map<numb
   const set = sensorIds.map((id) => `"${Number(id)}"`).join(', ');
   const flux = `
     from(bucket: "${process.env.INFLUX_BUCKET}")
-      |> range(start: -30d)
+      |> range(start: -24h)
       |> filter(fn: (r) => r._measurement == "readings" and contains(value: r.sensor_id, set: [${set}]))
       |> group(columns: ["sensor_id", "_field"])
       |> sort(columns: ["_time"])
