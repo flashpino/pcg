@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Sensor } from '../db/queries.js';
-import { countSensorStatus, isSensorOnline, readingForDisplay, resolveOnlineSince } from './dashboardService.js';
+import { buildDeviceView, countSensorStatus, isSensorOnline, readingForDisplay, resolveOnlineSince } from './dashboardService.js';
 
 function sensor(overrides: Partial<Sensor>): Sensor {
   return {
@@ -139,5 +139,65 @@ describe('readingForDisplay', () => {
       rssi: null,
       reading_time: null,
     });
+  });
+});
+
+// Monta o "card" exibido tanto no Dashboard admin quanto no Portal do Cliente — mesma função,
+// mesmos dados, pra os dois nunca divergirem (era duplicado inline em routes/dashboard.ts).
+describe('buildDeviceView', () => {
+  const leitura = { temperature: 23.4, humidity: 55, rssi: -28, time: '2026-01-01T12:00:00.000Z' };
+
+  it('sensor online monta view completa com leitura e online_since resolvido', () => {
+    const now = Date.parse('2026-01-01T12:05:00.000Z');
+    const s = sensor({
+      id: 9,
+      name: 'sensor A',
+      local: 'câmara fria',
+      mac: 'aa:bb:cc',
+      last_seen_at: new Date(now).toISOString(),
+      created_at: '2025-12-01T00:00:00.000Z',
+    });
+
+    const view = buildDeviceView(s, now, {
+      reading: leitura,
+      lastResolvedAt: '2026-01-01T10:00:00.000Z',
+      hardwareFault: false,
+    });
+
+    expect(view).toEqual({
+      id: 9,
+      name: 'sensor A',
+      local: 'câmara fria',
+      mac: 'aa:bb:cc',
+      online: true,
+      online_since: '2026-01-01T10:00:00.000Z',
+      hardware_fault: false,
+      temperature: 23.4,
+      humidity: 55,
+      rssi: -28,
+      reading_time: '2026-01-01T12:00:00.000Z',
+    });
+  });
+
+  it('sensor offline não tem online_since nem leitura, mesmo com dado no Influx', () => {
+    const now = Date.parse('2026-01-01T12:05:00.000Z');
+    const s = sensor({ id: 9, last_seen_at: null });
+
+    const view = buildDeviceView(s, now, { reading: leitura, hardwareFault: false });
+
+    expect(view.online).toBe(false);
+    expect(view.online_since).toBeNull();
+    expect(view.temperature).toBeNull();
+  });
+
+  it('defeito de hardware suprime a leitura mesmo com o sensor online', () => {
+    const now = Date.parse('2026-01-01T12:05:00.000Z');
+    const s = sensor({ id: 9, last_seen_at: new Date(now).toISOString() });
+
+    const view = buildDeviceView(s, now, { reading: leitura, hardwareFault: true });
+
+    expect(view.online).toBe(true);
+    expect(view.hardware_fault).toBe(true);
+    expect(view.temperature).toBeNull();
   });
 });
