@@ -352,6 +352,14 @@ static void updateDashboardReading(float temp, float hum) {
   lv_label_set_text(humMinMaxLabel, minMaxBuf);
 }
 
+// Sensor travado: a tela ficava com o último valor bom aceso pra sempre, indistinguível de
+// uma medição atual. Volta pro "--.-" do boot — quem olhar de longe vê que não há leitura.
+// Sparkline e max/min do dia ficam: são histórico real, não uma medição presente forjada.
+static void clearDashboardReading() {
+  lv_label_set_text(tempValueLabel, "--.-");
+  lv_label_set_text(humValueLabel, "--.-");
+}
+
 static void updateHeader() {
   time_t now = time(nullptr);
   struct tm tmNow;
@@ -939,7 +947,12 @@ void tick() {
 // Chamado por main.cpp a cada net::Event novo lido da fila.
 void onNetEvent(const net::Event& evt) {
   lastNetEvent = evt;
-  if (evt.hasReading) updateDashboardReading(evt.temp, evt.hum);
+  if (evt.hasReading) {
+    updateDashboardReading(evt.temp, evt.hum);
+  } else if (evt.sensorStale) {
+    clearDashboardReading();
+  }
+  // Sem os dois: falha isolada de leitura (<30s). Mantém o valor na tela — é recente e real.
 }
 
 }  // namespace ui

@@ -43,8 +43,10 @@ Base privada: `1.3.6.1.4.1.49551.1`
 Use os OIDs **INTEGER** no Zabbix, com multiplicador `0.1`. Eles permitem
 gráficos e gatilhos numéricos. Os OIDs STRING servem para conferência manual.
 
-Antes de qualquer leitura válida, temperatura e umidade respondem `0` e as
-versões STRING respondem `"---"`.
+**Temperatura e umidade respondem `0` (e `"---"` nas versões STRING) sempre que
+não há leitura confiável** — seja antes da primeira medição após ligar, seja
+porque o sensor falhou. O aparelho nunca repete a última leitura válida como se
+fosse atual. Veja as implicações nos [gatilhos](#6-gatilhos-alertas).
 
 ---
 
@@ -150,35 +152,38 @@ Em **Hosts → (seu host) → Triggers → Create trigger**. Substitua
 
 | Nome | Severidade | Expressão |
 |------|-----------|-----------|
+| **Sensor sem leitura** | High | `last(/Proatus-CPD/temp.proatus)=0` |
 | Temperatura alta | High | `last(/Proatus-CPD/temp.proatus)>27` |
 | Temperatura crítica | Disaster | `last(/Proatus-CPD/temp.proatus)>32` |
-| Temperatura baixa | Warning | `last(/Proatus-CPD/temp.proatus)<15` |
+| Temperatura baixa | Warning | `last(/Proatus-CPD/temp.proatus)<15 and last(/Proatus-CPD/temp.proatus)<>0` |
 | Umidade alta | High | `last(/Proatus-CPD/umid.proatus)>70` |
-| Umidade baixa | Warning | `last(/Proatus-CPD/umid.proatus)<30` |
-| Sensor sem resposta | High | `nodata(/Proatus-CPD/temp.proatus,5m)=1` |
+| Umidade baixa | Warning | `last(/Proatus-CPD/umid.proatus)<30 and last(/Proatus-CPD/umid.proatus)<>0` |
+| Sensor sem resposta (rede) | High | `nodata(/Proatus-CPD/temp.proatus,5m)=1` |
 | Sinal Wi-Fi fraco | Warning | `last(/Proatus-CPD/rssi.proatus)<-80` |
-| **Leitura congelada** | High | `min(/Proatus-CPD/temp.proatus,45m)=max(/Proatus-CPD/temp.proatus,45m)` |
 | Reinício inesperado | Information | `last(/Proatus-CPD/uptime.proatus)<300` |
 
-### Por que o gatilho de "leitura congelada" é necessário
+### ⚠️ Os gatilhos de valor baixo precisam excluir o zero
 
-Quando o sensor de temperatura falha, o firmware **para de atualizar os valores
-SNMP, mas continua respondendo às consultas** com a última leitura válida. Uptime
-e RSSI seguem se atualizando normalmente.
+Quando o sensor de temperatura falha, o firmware **zera** os OIDs de temperatura
+e umidade (INTEGER `0`, STRING `"---"`) em vez de continuar servindo a última
+leitura válida. É a garantia de que nenhum valor inventado sai do aparelho.
 
-Do ponto de vista do Zabbix, o host parece perfeitamente saudável: responde no
-prazo, sem timeout, com um valor plausível. O gatilho `nodata` **não dispara**
-nesse cenário — não há ausência de dados, há dado velho.
+O efeito colateral é que `0` é uma temperatura *plausível*. Sem o `and ... <>0`,
+o gatilho de temperatura baixa dispararia "Warning: 12 °C" toda vez que o sensor
+quebrasse — escondendo a falha real de hardware atrás de um alerta ambiental
+enganoso. Por isso os dois gatilhos de valor baixo carregam a exclusão, e o
+gatilho de **sensor sem leitura** é quem reporta a falha, com a severidade certa.
 
-O gatilho de leitura congelada cobre exatamente esse caso: se a temperatura não
-variar **nem 0,1 °C em 45 minutos**, algo está errado. Ambientes reais sempre
-oscilam um pouco, mesmo refrigerados. A janela de 45 minutos é deliberadamente
-maior que os 30 minutos que o firmware espera antes de tentar se recuperar
-sozinho reiniciando — assim o alerta não dispara durante uma recuperação normal.
+### Os dois tipos de falha são diferentes
 
-> O painel em `painel.proatus.app` detecta essa falha por conta própria e a
-> exibe como alerta de hardware. Quem monitora **apenas** por Zabbix depende
-> deste gatilho para não ficar cego.
+| Situação | O que o Zabbix vê | Gatilho que dispara |
+|----------|-------------------|---------------------|
+| Sensor de temperatura quebrado | Host responde; temperatura `0`, uptime e RSSI normais | Sensor sem leitura |
+| Aparelho sem energia ou sem Wi-Fi | Host não responde, timeout | Sensor sem resposta (rede) |
+
+> O painel em `painel.proatus.app` detecta as duas falhas por conta própria e as
+> exibe como alerta de hardware. Estes gatilhos existem para quem monitora
+> **apenas** por Zabbix não ficar cego.
 
 ---
 
@@ -198,8 +203,9 @@ sozinho reiniciando — assim o alerta não dispara durante uma recuperação no
 | `Timeout` no `snmpget` | Firewall, IP errado ou isolamento de AP | Liberar UDP 161; conferir IP na tela do aparelho; desativar *client isolation* |
 | Item em *Not supported* | OID ou community incorretos | Revisar o OID e a community `public` na interface SNMP |
 | Temperatura aparece como `234` | Falta o multiplicador | Adicionar preprocessing `Custom multiplier = 0.1` |
-| Valor `0` ou `"---"` | Ainda sem leitura válida desde o boot | Aguardar ~30 s; se persistir, verificar o sensor na tela do aparelho |
-| Valor válido mas **sempre idêntico** | Sensor travado — SNMP serve a última leitura | Ver o gatilho de leitura congelada (seção 6); trocar o sensor se persistir |
+| Valor `0` ou `"---"` logo após ligar | Ainda sem a primeira leitura | Aguardar ~30 s |
+| Valor `0` ou `"---"` persistente | Sensor de temperatura com defeito | Verificar a tela do aparelho (mostra `--.-` e sinalização vermelha); acionar o suporte para troca |
+| Alerta de "temperatura baixa" junto com valor `0` | Gatilho sem a exclusão `<>0` | Corrigir a expressão do gatilho (seção 6) |
 | Sem dados após queda de Wi-Fi | Aparelho reconectando | Aguardar reconexão; conferir RSSI |
 | IP mudou sozinho | Sem reserva de DHCP | Criar reserva pelo MAC do aparelho |
 

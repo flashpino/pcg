@@ -12,9 +12,11 @@ namespace snmp_agent {
 // pode (e deve) ser chamado no setup() antes da rede subir.
 void begin();
 
-// Atualiza os valores expostos via SNMP. RSSI é sempre atualizado a partir de
-// evt.rssi; temperatura/umidade só são sobrescritas quando evt.hasReading é true
-// (mantém a última leitura válida entre ciclos, igual ao firmware antigo).
+// Atualiza os valores expostos via SNMP. RSSI e uptime são sempre atualizados.
+// Temperatura/umidade seguem três estados, nunca um número inventado:
+//   evt.hasReading   -> valor novo
+//   evt.sensorStale  -> zerados (INTEGER 0, STRING "---"), igual ao pré-boot
+//   nenhum dos dois  -> mantém o último valor (falha isolada de leitura, <30s)
 void update(const net::Event& evt, uint32_t uptimeSeconds);
 
 // Processa pacotes SNMP pendentes (GET/GETNEXT). Chamar em loop apertado e nunca

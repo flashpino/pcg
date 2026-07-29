@@ -47,6 +47,16 @@ void update(const net::Event& evt, uint32_t uptimeSeconds) {
     humX10 = lroundf(evt.hum * 10.0f);
     snprintf(tempStr, sizeof(tempStr), "%.1f", evt.temp);
     snprintf(humStr, sizeof(humStr), "%.1f", evt.hum);
+  } else if (evt.sensorStale) {
+    // Sensor declarado travado. Antes daqui o agente seguia respondendo a última leitura
+    // válida indefinidamente — e como uptime/RSSI continuam se atualizando, o Zabbix via
+    // um host perfeitamente saudável servindo uma temperatura de horas atrás como se fosse
+    // atual (nodata() nunca dispara: não falta dado, o dado é velho). Volta pro mesmo
+    // estado "sem leitura" do pré-boot: nunca servir número inventado.
+    tempX10 = 0;
+    humX10 = 0;
+    snprintf(tempStr, sizeof(tempStr), "---");
+    snprintf(humStr, sizeof(humStr), "---");
   }
 }
 
