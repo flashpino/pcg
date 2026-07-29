@@ -125,4 +125,19 @@ describe('readingForDisplay', () => {
       reading_time: null,
     });
   });
+
+  // Regressão de campo (2026-07-29, sensor "casa pino"): o painel mostrava o chip de defeito e,
+  // ao lado, uma temperatura. Device com DHT travado manda heartbeat, então last_seen_at fica
+  // fresco e ele conta como ONLINE — o mascaramento só cobria offline, e o Influx devolvia a
+  // última leitura antes de o sensor calar. Mesmo dado fantasma que o firmware
+  // (clearDashboardReading) e o SNMP (sentinela -9999) já tinham deixado de servir; só o painel
+  // continuava servindo.
+  it('defeito de hardware não entrega leitura, mesmo com o device online (heartbeat)', () => {
+    expect(readingForDisplay(leitura, true, true)).toEqual({
+      temperature: null,
+      humidity: null,
+      rssi: null,
+      reading_time: null,
+    });
+  });
 });

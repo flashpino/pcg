@@ -241,6 +241,23 @@ describe('evaluateHardware', () => {
     expect(enqueueWhatsapp).not.toHaveBeenCalled();
   });
 
+  // Regressão de campo (2026-07-29, sensor "casa pino"): alerta de hardware disparado, chip de
+  // defeito no painel e nenhum WhatsApp. Sem admin com telefone cadastrado, notifyAdmins iterava
+  // uma lista vazia e não gravava nada — o alerta ficava sem UMA linha de notification, exatamente
+  // igual a "a fila nunca rodou" ou "o Evolution caiu". Ninguém consegue diagnosticar isso pelo
+  // painel. O envio não tem pra onde ir, mas o motivo tem que ficar registrado.
+  it('sem nenhum admin com telefone registra o motivo em vez de sumir em silêncio', async () => {
+    const s = sensorId(24);
+    vi.mocked(queries.getFiringAlert).mockResolvedValue(undefined as unknown as queries.Alert);
+    vi.mocked(queries.createAlert).mockResolvedValue({ id: 56 } as queries.Alert);
+    vi.mocked(queries.listAdminsWithPhone).mockResolvedValue([]);
+
+    await evaluateHardware(s, true);
+
+    expect(queries.createAdminNotification).toHaveBeenCalledWith(56, null, 'whatsapp', 'skipped_no_admin');
+    expect(enqueueWhatsapp).not.toHaveBeenCalled();
+  });
+
   // O heartbeat chega a cada 60s enquanto o sensor estiver travado — re-notificar a cada ingest
   // encheria o WhatsApp do time. Alerta de hardware é fire/resolve só, igual notifyAdminsHardware.
   it('já firing e ainda travado não re-notifica (evita spam a cada heartbeat)', async () => {
