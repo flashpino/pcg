@@ -3,6 +3,7 @@ import {
   connectivityVars,
   decideBinaryTransition,
   decideTransition,
+  evaluateConnectivity,
   evaluateHardware,
   isBackInBounds,
   notifyAdminsFirmwareUpdate,
@@ -164,13 +165,11 @@ describe('notifyAdminsFirmwareUpdate', () => {
 });
 
 describe('evaluateHardware', () => {
-  const sensor = {
-    id: 12,
-    name: 'proatus_B678',
-    local: 'CPD',
-    client_id: 2,
-    offline_after_seconds: 300,
-  } as queries.Sensor;
+  // evaluateHardware guarda o streak de ingests saudáveis em memória, por sensor — cada teste usa
+  // um id próprio pra não herdar contagem do teste anterior.
+  const sensorId = (id: number) =>
+    ({ id, name: 'proatus_B678', local: 'CPD', client_id: 2, offline_after_seconds: 300 }) as queries.Sensor;
+  const sensor = sensorId(12);
 
   beforeEach(() => vi.clearAllMocks());
 
@@ -191,13 +190,44 @@ describe('evaluateHardware', () => {
     expect(enqueueWhatsapp).toHaveBeenCalledTimes(1);
   });
 
-  it('resolve o alerta quando as leituras voltam', async () => {
+  // Sensor moribundo (lê de vez em quando) alternava fire/resolve a cada ciclo de 60s, mandando
+  // duas mensagens por minuto pra cada admin. Exigir uma sequência de ingests saudáveis mata o
+  // flapping sem atrasar demais o resolve de uma recuperação de verdade (~3 min a 60s/ingest).
+  it('não resolve no primeiro ingest saudável — evita flapping de sensor intermitente', async () => {
+    const s = sensorId(21);
     vi.mocked(queries.getFiringAlert).mockResolvedValue({ id: 55 } as queries.Alert);
     vi.mocked(queries.listAdminsWithPhone).mockResolvedValue([]);
 
-    await evaluateHardware(sensor, false);
+    await evaluateHardware(s, false);
+
+    expect(queries.resolveAlert).not.toHaveBeenCalled();
+  });
+
+  it('resolve após 3 ingests saudáveis consecutivos', async () => {
+    const s = sensorId(22);
+    vi.mocked(queries.getFiringAlert).mockResolvedValue({ id: 55 } as queries.Alert);
+    vi.mocked(queries.listAdminsWithPhone).mockResolvedValue([]);
+
+    await evaluateHardware(s, false);
+    await evaluateHardware(s, false);
+    expect(queries.resolveAlert).not.toHaveBeenCalled();
+    await evaluateHardware(s, false);
 
     expect(queries.resolveAlert).toHaveBeenCalledWith(55);
+  });
+
+  it('uma recaída no meio zera a contagem — não resolve por acúmulo', async () => {
+    const s = sensorId(23);
+    vi.mocked(queries.getFiringAlert).mockResolvedValue({ id: 55 } as queries.Alert);
+    vi.mocked(queries.listAdminsWithPhone).mockResolvedValue([]);
+
+    await evaluateHardware(s, false);
+    await evaluateHardware(s, false);
+    await evaluateHardware(s, true); // travou de novo
+    await evaluateHardware(s, false);
+    await evaluateHardware(s, false);
+
+    expect(queries.resolveAlert).not.toHaveBeenCalled();
   });
 
   it('sensor saudável e sem alerta firing não faz nada', async () => {
@@ -221,6 +251,43 @@ describe('evaluateHardware', () => {
 
     expect(queries.createAlert).not.toHaveBeenCalled();
     expect(enqueueWhatsapp).not.toHaveBeenCalled();
+  });
+});
+
+describe('evaluateConnectivity com defeito de hardware em curso', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  // Regressão introduzida pelo heartbeat: com last_seen_at fresco o sweep resolvia a conectividade
+  // e mandava "Sensor X voltou a reportar" pros contatos do cliente — falsa tranquilização, já que
+  // sem leitura não há monitoramento nenhum. O registro resolve (a comunicação voltou mesmo), mas
+  // a mensagem de normalidade não pode sair enquanto o sensor estiver quebrado.
+  it('resolve o registro mas não anuncia "voltou a reportar" aos contatos', async () => {
+    const sensor = { id: 31, name: 'proatus_B678', local: 'CPD', client_id: 2, offline_after_seconds: 300 } as queries.Sensor;
+    vi.mocked(queries.getFiringAlert).mockImplementation(
+      async (_id, type) => ({ id: type === 'connectivity' ? 70 : 71 }) as queries.Alert,
+    );
+    vi.mocked(queries.listContacts).mockResolvedValue([]);
+    vi.mocked(queries.listContactAlertPrefsByClient).mockResolvedValue([]);
+    vi.mocked(queries.listAdminsWithPhone).mockResolvedValue([]);
+
+    await evaluateConnectivity(sensor, false);
+
+    expect(queries.resolveAlert).toHaveBeenCalledWith(70);
+    expect(queries.getMessageTemplate).not.toHaveBeenCalledWith('connectivity_resolve');
+  });
+
+  it('sem defeito de hardware, o "voltou a reportar" sai normalmente', async () => {
+    const sensor = { id: 32, name: 'proatus_C528', local: 'CPD', client_id: 2, offline_after_seconds: 300 } as queries.Sensor;
+    vi.mocked(queries.getFiringAlert).mockImplementation(
+      async (_id, type) => (type === 'connectivity' ? ({ id: 80 } as queries.Alert) : (undefined as unknown as queries.Alert)),
+    );
+    vi.mocked(queries.listContacts).mockResolvedValue([]);
+    vi.mocked(queries.listContactAlertPrefsByClient).mockResolvedValue([]);
+    vi.mocked(queries.listAdminsWithPhone).mockResolvedValue([]);
+
+    await evaluateConnectivity(sensor, false);
+
+    expect(queries.getMessageTemplate).toHaveBeenCalledWith('connectivity_resolve');
   });
 });
 
