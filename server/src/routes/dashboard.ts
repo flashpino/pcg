@@ -1,6 +1,13 @@
 import type { FastifyInstance } from 'fastify';
-import { countAlertsSince, getLastConnectivityResolutions, listAlerts, listClients, listSensors } from '../db/queries.js';
-import { countSensorStatus, resolveOnlineSince } from '../services/dashboardService.js';
+import {
+  countAlertsSince,
+  getLastConnectivityResolutions,
+  listAlerts,
+  listClients,
+  listSensorIdsWithFiringAlert,
+  listSensors,
+} from '../db/queries.js';
+import { countSensorStatus, readingForDisplay, resolveOnlineSince } from '../services/dashboardService.js';
 import { queryLatestReadings } from '../services/influx.js';
 
 const RECENT_EVENTS_LIMIT = 20;
@@ -18,9 +25,10 @@ export async function dashboardRoutes(app: FastifyInstance): Promise<void> {
 
     const claimed = sensors.filter((s) => s.client_id !== null);
     const sensorIds = claimed.map((s) => s.id);
-    const [latestReadings, onlineSince] = await Promise.all([
+    const [latestReadings, onlineSince, hardwareFaults] = await Promise.all([
       queryLatestReadings(sensorIds),
       getLastConnectivityResolutions(sensorIds),
+      listSensorIdsWithFiringAlert('hardware'),
     ]);
 
     const clientNames = new Map(clients.map((c) => [c.id, c.name]));
@@ -38,10 +46,10 @@ export async function dashboardRoutes(app: FastifyInstance): Promise<void> {
         client_name: clientNames.get(sensor.client_id!) ?? '—',
         online: sensorOnline,
         online_since: sensorOnline ? resolveOnlineSince(sensor, onlineSince.get(sensor.id)) : null,
-        temperature: reading?.temperature ?? null,
-        humidity: reading?.humidity ?? null,
-        rssi: reading?.rssi ?? null,
-        reading_time: reading?.time ?? null,
+        // Device se comunicando, mas sem leitura válida (DHT travado) — distinto de offline.
+        hardware_fault: hardwareFaults.has(sensor.id),
+        // Offline não expõe leitura nenhuma: ver readingForDisplay.
+        ...readingForDisplay(reading, sensorOnline),
       };
     });
 

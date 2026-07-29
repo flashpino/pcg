@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Sensor } from '../db/queries.js';
-import { countSensorStatus, isSensorOnline, resolveOnlineSince } from './dashboardService.js';
+import { countSensorStatus, isSensorOnline, readingForDisplay, resolveOnlineSince } from './dashboardService.js';
 
 function sensor(overrides: Partial<Sensor>): Sensor {
   return {
@@ -91,5 +91,38 @@ describe('resolveOnlineSince', () => {
   it('cai pra created_at quando nunca houve alerta de conectividade resolvido', () => {
     const s = sensor({ created_at: '2026-01-01T00:00:00.000Z' });
     expect(resolveOnlineSince(s, undefined)).toBe('2026-01-01T00:00:00.000Z');
+  });
+});
+
+describe('readingForDisplay', () => {
+  const leitura = { temperature: 23.4, humidity: 55, rssi: -28, time: '2026-01-01T12:00:00.000Z' };
+
+  it('online entrega a leitura completa', () => {
+    expect(readingForDisplay(leitura, true)).toEqual({
+      temperature: 23.4,
+      humidity: 55,
+      rssi: -28,
+      reading_time: '2026-01-01T12:00:00.000Z',
+    });
+  });
+
+  // Sensor mudo tem sim leitura no Influx — a última antes de calar. Exibi-la faz um dado velho
+  // passar por atual: o painel mostraria 23.4°C de horas atrás como se fosse a temperatura de agora.
+  it('offline não entrega temperatura, umidade, sinal nem horário — mesmo havendo leitura', () => {
+    expect(readingForDisplay(leitura, false)).toEqual({
+      temperature: null,
+      humidity: null,
+      rssi: null,
+      reading_time: null,
+    });
+  });
+
+  it('online sem nenhuma leitura no Influx devolve tudo nulo, sem quebrar', () => {
+    expect(readingForDisplay(undefined, true)).toEqual({
+      temperature: null,
+      humidity: null,
+      rssi: null,
+      reading_time: null,
+    });
   });
 });

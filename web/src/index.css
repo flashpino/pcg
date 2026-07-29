@@ -373,6 +373,20 @@ button.danger:hover { background: var(--status-red-bg); border-color: var(--stat
 }
 .status-chip.online { color: var(--status-green); }
 .status-chip.offline { color: var(--status-yellow); }
+/* Defeito de hardware é mais grave que offline: o device está comunicando e mesmo assim não há
+   medição nenhuma. Vermelho pra não ser confundido com o amarelo de "caiu a rede". */
+.status-chip.fault { color: var(--status-red); }
+.status-chip.fault .dot { animation: statusPulseYellow 2s infinite; }
+.device-card.fault { border-color: var(--status-red); }
+.device-fault-banner {
+  margin: 0.5rem 0 0;
+  padding: 0.4rem 0.6rem;
+  border-radius: 6px;
+  background: var(--status-red-bg);
+  color: var(--status-red);
+  font-size: 0.72rem;
+  font-weight: 600;
+}
 .status-chip .dot { width: 10px; height: 10px; border-radius: 50%; background: currentColor; }
 .status-chip.online .dot { animation: statusPulseGreen 2s infinite; }
 .status-chip.offline .dot { animation: statusPulseYellow 2s infinite; }

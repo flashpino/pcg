@@ -38,3 +38,27 @@ export function countSensorStatus(claimedSensors: Sensor[], now: number): Sensor
 export function resolveOnlineSince(sensor: Pick<Sensor, 'created_at'>, lastResolvedAt: string | undefined): string {
   return lastResolvedAt ?? sensor.created_at;
 }
+
+export interface DisplayReading {
+  temperature: number | null;
+  humidity: number | null;
+  rssi: number | null;
+  reading_time: string | null;
+}
+
+// Sensor offline não expõe NADA de leitura. O Influx guarda a última medição antes de ele calar,
+// e devolvê-la faz um dado velho passar por atual — o painel mostraria a temperatura de horas
+// atrás como se fosse a de agora. Mascarar aqui, na origem, impede qualquer consumidor da API de
+// vazar isso por engano, em vez de depender de cada tela lembrar de checar `online`.
+export function readingForDisplay(
+  reading: { temperature: number | null; humidity: number | null; rssi: number | null; time: string } | undefined,
+  online: boolean,
+): DisplayReading {
+  if (!online || !reading) return { temperature: null, humidity: null, rssi: null, reading_time: null };
+  return {
+    temperature: reading.temperature,
+    humidity: reading.humidity,
+    rssi: reading.rssi,
+    reading_time: reading.time,
+  };
+}

@@ -325,6 +325,12 @@ export const getFiringAlert = (sensorId: number, type: Alert['type']) =>
     .query<Alert>("SELECT * FROM alerts WHERE sensor_id = $1 AND type = $2 AND state = 'firing'", [sensorId, type])
     .then((r) => r.rows[0]);
 
+// Em lote, pro dashboard: um getFiringAlert por sensor seria N+1 com 50 sensores na tela.
+export const listSensorIdsWithFiringAlert = (type: Alert['type']) =>
+  pool
+    .query<{ sensor_id: number }>("SELECT sensor_id FROM alerts WHERE type = $1 AND state = 'firing'", [type])
+    .then((r) => new Set(r.rows.map((row) => row.sensor_id)));
+
 // ON CONFLICT casa com o índice parcial alerts_one_firing — dedup contra corrida concorrente.
 // undefined de volta = outra escrita já criou o alerta firing antes desta.
 export const createAlert = (sensorId: number, type: Alert['type'], value: number | null, message: string) =>

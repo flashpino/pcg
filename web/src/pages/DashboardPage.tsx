@@ -16,6 +16,7 @@ interface Device {
   client_name: string;
   online: boolean;
   online_since: string | null;
+  hardware_fault: boolean;
   temperature: number | null;
   humidity: number | null;
   rssi: number | null;
@@ -99,7 +100,7 @@ export function DashboardPage() {
       </div>
       <div className="device-grid">
         {devices.map((d) => (
-          <div className={`device-card${d.online ? '' : ' offline'}`} key={d.id}>
+          <div className={`device-card${d.online ? '' : ' offline'}${d.hardware_fault ? ' fault' : ''}`} key={d.id}>
             <div className="device-card-header">
               <div>
                 <strong>{d.local ?? d.name}</strong>
@@ -108,30 +109,46 @@ export function DashboardPage() {
               <div style={{ textAlign: 'right' }}>
                 <small>{d.client_name} — {d.name}</small>
                 <div>
-                  <span className={`status-chip ${d.online ? 'online' : 'offline'}`} title={d.online ? 'online' : 'offline'}>
+                  <span
+                    className={`status-chip ${d.hardware_fault ? 'fault' : d.online ? 'online' : 'offline'}`}
+                    title={d.hardware_fault ? 'sensor com defeito' : d.online ? 'online' : 'offline'}
+                  >
                     <span className="dot" />
                   </span>
                 </div>
               </div>
             </div>
+            {/* Defeito de hardware é device comunicando sem leitura válida — não é queda de rede,
+                e sem esse aviso o card fica igual ao de um sensor que só ainda não reportou. */}
+            {d.hardware_fault && (
+              <div className="device-fault-banner" role="status">
+                Sensor com defeito — sem leitura válida. Verifique o dispositivo.
+              </div>
+            )}
             <div className="device-card-readings">
               <div>
                 <span className="reading-label">Temperatura</span>
-                <span className="reading-value">{d.temperature ?? '—'}<small>°C</small></span>
+                {/* Unidade some junto com o valor: "—°C" sugere uma medição que não existe. */}
+                <span className="reading-value">{d.temperature ?? '—'}{d.temperature !== null && <small>°C</small>}</span>
               </div>
               <div>
                 <span className="reading-label">Humidade</span>
-                <span className="reading-value">{d.humidity ?? '—'}<small>%</small></span>
+                <span className="reading-value">{d.humidity ?? '—'}{d.humidity !== null && <small>%</small>}</span>
               </div>
             </div>
             <div className="device-card-footer">
               <span>uptime {d.online ? formatUptime(d.online_since) : '—'}</span>
-              <span className="signal-bars" title={d.rssi !== null ? `${d.rssi} dBm` : 'sem leitura'}>
-                {[0, 1, 2, 3].map((i) => (
-                  <i key={i} className={i < signalBars(d.rssi) ? 'bar-on' : 'bar-off'} />
-                ))}
-                {d.rssi !== null && ` ${d.rssi} dBm`}
-              </span>
+              {/* Sem sinal não desenha barra nenhuma — 4 barras apagadas ainda são uma leitura. */}
+              {d.rssi !== null ? (
+                <span className="signal-bars" title={`${d.rssi} dBm`}>
+                  {[0, 1, 2, 3].map((i) => (
+                    <i key={i} className={i < signalBars(d.rssi) ? 'bar-on' : 'bar-off'} />
+                  ))}
+                  {` ${d.rssi} dBm`}
+                </span>
+              ) : (
+                <span className="signal-bars" title="sem leitura">—</span>
+              )}
             </div>
           </div>
         ))}
