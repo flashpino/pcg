@@ -104,7 +104,7 @@ Builds: `npm run build` (tsc) verde em `server/` e em `web/`.
 
 ## Lacunas conhecidas
 
-- ~~**`notifier.test.ts` falha na coleta**~~ — **resolvido em `4ff4cd2`.** A causa não era variável
+- ~~**`notifier.test.ts` falha na coleta**~~ — **resolvido em `0664075`.** A causa não era variável
   faltando na configuração: `INFLUX_URL` está no `.env` e no EasyPanel. É que `npm test` é só
   `vitest run`, sem o `--env-file=../.env` que o script `dev` passa (e não há `vitest.config.*`
   suprindo isso). Node não lê `.env` sozinho, então `process.env.INFLUX_URL` fica `undefined` e o
