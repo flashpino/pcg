@@ -550,11 +550,20 @@ static void showWifiList() {
   // que acha as redes nesta mesma placa. O caminho async + WiFi.disconnect() + retry
   // disparava WIFI_SCAN_FAILED e voltava n=0 (nenhuma rede). pauseForScan mantém a task de
   // rede longe do rádio durante o scan (relevante quando já há credencial salva).
+  //
+  // GOTCHA: mesmo com pauseForScan, a task de rede (core 0) pode estar no meio de um
+  // WiFi.begin()/disconnect quando a UI (core 1) chama scanNetworks() — o driver do
+  // ESP-IDF não libera o rádio instantaneamente, e o scan volta WIFI_SCAN_FAILED (n=-2)
+  // nesse instante. Retry curto dá tempo do rádio assentar sem travar a tela por muito tempo.
   net::pauseForScan(true);
+  int16_t n = WIFI_SCAN_FAILED;
+  for (int attempt = 0; attempt < 5 && n < 0; attempt++) {
+    esp_task_wdt_reset();
+    if (attempt > 0) delay(300);
+    n = WiFi.scanNetworks(false, true);
+    Serial.printf("[wifi-scan] attempt=%d n=%d mode=%d status=%d\n", attempt, n, WiFi.getMode(), WiFi.status());
+  }
   esp_task_wdt_reset();
-  int16_t n = WiFi.scanNetworks(false, true);
-  esp_task_wdt_reset();
-  Serial.printf("[wifi-scan] n=%d mode=%d status=%d\n", n, WiFi.getMode(), WiFi.status());
   net::pauseForScan(false);
 
   lv_obj_clean(wifiListWidget);

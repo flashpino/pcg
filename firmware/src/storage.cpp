@@ -1,6 +1,8 @@
 #include "storage.h"
+#include <Arduino.h>
 #include <Preferences.h>
 #include <WiFi.h>
+#include <math.h>
 
 namespace storage {
 
@@ -112,7 +114,11 @@ float loadTempOffset() {
 }
 
 void saveTempOffset(float offset) {
-  prefs.putFloat("temp_offset", offset);
+  size_t written = prefs.putFloat("temp_offset", offset);
+  // ponytail: log temporário de diagnóstico — remover depois de confirmar a causa do bug
+  // "offset não sobrevive ao restart em sensor já configurado" (ver conversa/relato).
+  Serial.printf("[offset] save() offset=%.2f written=%u readback=%.2f\n", offset, (unsigned)written,
+                prefs.getFloat("temp_offset", NAN));
 }
 
 void factoryReset() {

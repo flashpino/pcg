@@ -116,15 +116,32 @@ static bool ensureConnected() {
 
   uint32_t waited = 0;
   while (WiFi.status() != WL_CONNECTED && waited < 8000) {
+    if (scanPaused) {
+      // UI pediu o rádio no meio da tentativa de conexão — aborta e larga, senão o scan
+      // da tela de WiFi disputa o rádio com este WiFi.begin() em andamento e volta vazio
+      // (bug real: sensor já configurado e offline nunca soltava o rádio a tempo).
+      WiFi.disconnect();
+      return false;
+    }
     esp_task_wdt_reset();
     delay(250);
     waited += 250;
   }
-
+  // Conectou tem precedência sobre o pedido de scan: se a guarda de scanPaused viesse antes
+  // desta checagem, uma conexão que acabou de fechar seria jogada fora — consecutiveFailures
+  // ficaria travado no valor antigo (a chamada seguinte retorna logo no topo, em WL_CONNECTED,
+  // e nunca mais zera) e o configTime nunca rodaria. Bastava o usuário abrir a tela de WiFi no
+  // tick em que o WiFi.begin() completou pra o device reiniciar sozinho depois, na 10ª falha.
   if (WiFi.status() == WL_CONNECTED) {
     consecutiveFailures = 0;
     configTime(-3 * 3600, 0, "pool.ntp.org", "time.nist.gov");  // America/Sao_Paulo, sem DST desde 2019
     return true;
+  }
+  // Não conectou e a UI quer o rádio: larga explicitamente, senão o WiFi.begin() que estourou
+  // os 8s continua segurando o rádio e o scan volta vazio — mesmo motivo do aborto lá em cima.
+  if (scanPaused) {
+    WiFi.disconnect();
+    return false;
   }
 
   consecutiveFailures++;
@@ -139,6 +156,7 @@ static bool ensureConnected() {
   // seguidas de WiFi. Por isso "piscava"/reiniciava sozinho. Fatiado em passos de
   // 250ms com reset a cada um, igual ao loop de espera de conexão logo acima.
   for (uint32_t waitedBackoff = 0; waitedBackoff < backoff; waitedBackoff += 250) {
+    if (scanPaused) return false;  // idem — não segura o backoff se a UI quer escanear
     esp_task_wdt_reset();
     delay(250);
   }
@@ -322,6 +340,10 @@ static void task(void* pvParameters) {
   QueueHandle_t uiQueue = static_cast<QueueHandle_t>(pvParameters);
   esp_task_wdt_add(NULL);
   dht.begin();  // faltava — sem isso a lib nunca configura o pino, toda leitura dá NaN
+
+  // ponytail: log temporário de diagnóstico — remover depois de confirmar a causa do bug
+  // "offset não sobrevive ao restart em sensor já configurado" (ver conversa/relato).
+  Serial.printf("[offset] boot: temp_offset=%.2f\n", storage::loadTempOffset());
 
   bool provisioned = storage::hasDeviceToken();
   uint32_t lastSendMs = 0;  // primeiro envio acontece ~60s depois do boot, igual antes
