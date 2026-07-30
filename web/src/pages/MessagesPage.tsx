@@ -20,6 +20,7 @@ const LABELS: Record<string, string> = {
   reboot_fire: 'Reinício inesperado do device (só admins com telefone cadastrado)',
   welcome: 'Boas-vindas — enviada ao cadastrar contato',
   test: 'Teste de dispositivo (manual/automático)',
+  test_warning: 'Aviso enviado 2 minutos antes de qualquer teste',
   daily: 'Mensagem diária — "está tudo bem" (dia e horário por contato, em Clientes > Contatos)',
 };
 
@@ -35,9 +36,11 @@ const LEGEND: Record<string, string[]> = {
   hardware_resolve: ['sensor', 'local', 'cliente', 'segundos'],
   reboot_fire: ['sensor', 'local', 'cliente', 'motivo', 'quando'],
   welcome: ['nome', 'telefone', 'cliente', 'sensor', 'local', 'temperatura'],
-  test: ['sensor', 'local', 'cliente', 'temperatura', 'quando'],
-  // {{$sensores}} = lista pronta, uma linha por sensor do cliente com a temperatura atual.
-  daily: ['nome', 'cliente', 'sensores', 'quando'],
+  test: ['sensor', 'local', 'cliente', 'temperatura', 'quando', 'nome'],
+  test_warning: ['sensor', 'local', 'cliente', 'temperatura', 'quando', 'nome'],
+  // Na diária, sensor/local/temperatura viram lista quando o cliente tem mais de um sensor.
+  // {{$sensores}} é a lista pronta, uma linha por sensor com a temperatura atual.
+  daily: ['nome', 'cliente', 'sensor', 'local', 'temperatura', 'sensores', 'quando'],
 };
 
 function TemplateForm({ tpl, onSaved }: { tpl: Template; onSaved: () => void }) {

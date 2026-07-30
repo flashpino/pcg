@@ -354,16 +354,22 @@ export async function notifyAdminsFirmwareUpdate(sensor: Sensor, from: string, t
 // Influx/Postgres. `temperatura` vem da última leitura conhecida (sensor.id), mesmo critério de
 // sendTest: sem leitura recente ainda envia '--' (revela sensor mudo) em vez de quebrar a mensagem.
 export function connectivityVars(
-  sensor: Pick<Sensor, 'name' | 'local' | 'offline_after_seconds'>,
+  sensor: Pick<Sensor, 'name' | 'local' | 'offline_after_seconds' | 'temp_min' | 'temp_max'>,
   cliente: string,
   temperatura: number | null,
 ): Record<string, string | number> {
+  const bound = { min: sensor.temp_min ?? null, max: sensor.temp_max ?? null };
   return {
     sensor: sensor.name,
     cliente,
     local: sensor.local ?? '',
     segundos: sensor.offline_after_seconds,
     temperatura: temperatura ?? '--',
+    // O painel anuncia min/max/limite também nas mensagens de conectividade. Sem leitura atual não
+    // há violação a apurar, então 'limite' cai no limite configurado (max, ou min se só houver min).
+    min: bound.min ?? '-',
+    max: bound.max ?? '-',
+    limite: temperatura === null ? (bound.max ?? bound.min ?? '-') : violatedBound(temperatura, bound),
   };
 }
 
@@ -410,8 +416,15 @@ export async function evaluateConnectivity(sensor: Sensor, offline: boolean): Pr
 // Avisa por WhatsApp, antes de qualquer teste, que a ligação que vem a seguir não é uma
 // emergência real — mesma pref 'test' (enabled/janela/canal) do teste em si, então só chega a
 // quem de fato vai receber o teste.
-async function warnBeforeTest(alert: Alert, contacts: Contact[], prefs: ContactAlertPref[]): Promise<void> {
-  const warningTexts = await renderMessage('test_warning', {});
+// Recebe as MESMAS vars do teste: o aviso era renderizado com {} e qualquer {{$...}} nele saía
+// vazio — inclusive {{$local}}, que é o que diz à pessoa qual ambiente vai ser testado.
+async function warnBeforeTest(
+  alert: Alert,
+  contacts: Contact[],
+  prefs: ContactAlertPref[],
+  vars: Record<string, string | number | undefined>,
+): Promise<void> {
+  const warningTexts = await renderMessage('test_warning', vars);
   await notifyContacts(alert, contacts, prefs, 'test', ['whatsapp'], warningTexts, 'fire');
 }
 
@@ -446,7 +459,7 @@ export async function sendTest(sensor: Sensor): Promise<void> {
   const alert = await createResolvedAlert(sensor.id, 'test', texts.whatsapp);
   const contacts = await listContacts(sensor.client_id);
   const prefs = await listContactAlertPrefsByClient(sensor.client_id);
-  await warnBeforeTest(alert, contacts, prefs);
+  await warnBeforeTest(alert, contacts, prefs, vars);
   await notifyContacts(alert, contacts, prefs, 'test', ['whatsapp', 'voice'], texts, 'fire', TEST_DELAY_SECONDS);
 }
 
@@ -458,15 +471,20 @@ export async function sendDailyReport(contact: Contact): Promise<void> {
   if (sensors.length === 0) return; // cliente sem sensor não tem o que reportar
 
   const latest = await queryLatestReadings(sensors.map((s) => s.id));
+  const temp = (s: Sensor) => latest.get(s.id)?.temperature ?? '--';
   const vars = {
     nome: contact.name,
     cliente: (await getClient(contact.client_id))?.name ?? '',
     quando: new Date().toLocaleString('pt-BR', { timeZone: contact.timezone }),
+    // A diária é UMA mensagem cobrindo todos os sensores do cliente, então as variáveis padrão
+    // viram lista — escolher o primeiro sensor mentiria sobre os outros. Com um sensor só (caso
+    // comum) o resultado é idêntico ao das outras mensagens.
+    sensor: sensors.map((s) => s.name).join(', '),
+    local: sensors.map((s) => s.local || s.name).join(', '),
+    temperatura: sensors.map(temp).join(', '),
     // Sensor sem leitura recente entra com '--' em vez de sumir da lista: some da mensagem é
     // exatamente o que faz um sensor mudo passar despercebido no relatório de "tudo bem".
-    sensores: sensors
-      .map((s) => `• ${s.local || s.name}: ${latest.get(s.id)?.temperature ?? '--'}°C`)
-      .join('\n'),
+    sensores: sensors.map((s) => `• ${s.local || s.name}: ${temp(s)}°C`).join('\n'),
   };
 
   const texts = await renderMessage('daily', vars);
@@ -495,10 +513,22 @@ export async function sendContactTest(contact: Contact): Promise<void> {
   if (!sensor) throw Object.assign(new Error('cliente sem sensor cadastrado'), { statusCode: 400 });
 
   const cliente = await clientNameOf(sensor);
-  const vars = { sensor: sensor.name, cliente, local: sensor.local ?? '', nome: contact.name };
+  // Mesmo conjunto que sendTest monta: o painel anuncia temperatura e quando no template 'test',
+  // e por este caminho elas não existiam — o admin editava o texto e os campos saíam em branco.
+  const latest = (await queryLatestReadings([sensor.id])).get(sensor.id);
+  const vars = {
+    sensor: sensor.name,
+    cliente,
+    local: sensor.local ?? '',
+    nome: contact.name,
+    temperatura: latest?.temperature ?? '--',
+    quando: sensor.last_seen_at
+      ? new Date(sensor.last_seen_at).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })
+      : '--:--',
+  };
   const texts = await renderMessage('test', vars);
   const alert = await createResolvedAlert(sensor.id, 'test', texts.whatsapp);
   const prefs = await listContactAlertPrefsByClient(contact.client_id);
-  await warnBeforeTest(alert, [contact], prefs);
+  await warnBeforeTest(alert, [contact], prefs, vars);
   await notifyContacts(alert, [contact], prefs, 'test', ['whatsapp', 'voice'], texts, 'fire', TEST_DELAY_SECONDS);
 }

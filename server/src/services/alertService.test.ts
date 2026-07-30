@@ -125,18 +125,21 @@ describe('connectivityVars', () => {
   // Regressão: quando o sensor volta a reportar, a mensagem de "voltou a reportar" não trazia a
   // temperatura atual — evaluateConnectivity nunca buscava a leitura mais recente pra montar as vars.
   it('inclui a temperatura atual quando há leitura recente', () => {
-    const sensor = { name: 'Sensor A', local: 'Sala 1', offline_after_seconds: 300 };
+    const sensor = { name: 'Sensor A', local: 'Sala 1', offline_after_seconds: 300, temp_min: null, temp_max: null };
     expect(connectivityVars(sensor, 'Cliente X', 21.5)).toEqual({
       sensor: 'Sensor A',
       cliente: 'Cliente X',
       local: 'Sala 1',
       segundos: 300,
       temperatura: 21.5,
+      min: '-', // sensor da fixture não tem limites configurados
+      max: '-',
+      limite: '-',
     });
   });
 
   it('usa "--" quando não há leitura recente (sensor mudo)', () => {
-    const sensor = { name: 'Sensor A', local: null, offline_after_seconds: 300 };
+    const sensor = { name: 'Sensor A', local: null, offline_after_seconds: 300, temp_min: null, temp_max: null };
     expect(connectivityVars(sensor, '', null).temperatura).toBe('--');
   });
 
