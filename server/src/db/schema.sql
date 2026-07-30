@@ -98,9 +98,14 @@ INSERT INTO contact_alert_prefs (contact_id, alert_type, enabled, days_of_week, 
 --   'daily' = mensagem diária de "está tudo bem com a climatização". Aqui window_start é o HORÁRIO
 --             DO ENVIO (não o início de uma janela) e window_end/renotify_minutes não são usados —
 --             ver isDailySendTime em services/scheduleWindow.ts.
+-- NOT VALID: a constraint vale pra toda escrita nova, mas o Postgres não varre as linhas que já
+-- estão lá. Sem isso, UMA linha legada com tipo desconhecido derruba o migrate() e o servidor
+-- inteiro não sobe — e o app não sobe justamente pra deixar alguém consertar a linha. Linha de
+-- tipo desconhecido é inerte (todo caminho de leitura filtra pelos tipos acima), então tolerá-la
+-- é mais barato que um boot em crash loop.
 ALTER TABLE contact_alert_prefs DROP CONSTRAINT IF EXISTS contact_alert_prefs_alert_type_check;
 ALTER TABLE contact_alert_prefs ADD CONSTRAINT contact_alert_prefs_alert_type_check
-  CHECK (alert_type IN ('temperature', 'humidity', 'connectivity', 'test', 'daily'));
+  CHECK (alert_type IN ('temperature', 'humidity', 'connectivity', 'test', 'daily')) NOT VALID;
 
 INSERT INTO contact_alert_prefs (contact_id, alert_type)
   SELECT id, 'test' FROM contacts
