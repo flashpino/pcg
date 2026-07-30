@@ -89,22 +89,25 @@ INSERT INTO contact_alert_prefs (contact_id, alert_type, enabled, days_of_week, 
   SELECT id, 'connectivity', alert_connectivity, days_of_week, window_start, window_end, renotify_minutes FROM contacts
   ON CONFLICT (contact_id, alert_type) DO NOTHING;
 
--- 'test' = pref dedicada do botão "Testar canal" (cadastro do contato) e do teste agendado do
--- sensor — antes o botão ignorava liga/desliga e janela de horário do contato por completo.
+-- Tipos aceitos, DEFINIÇÃO ÚNICA no arquivo: este SQL roda inteiro a cada boot, então um segundo
+-- DROP/ADD com o mesmo nome e uma lista menor derruba o server assim que existir uma linha do tipo
+-- mais novo (foi o crash loop "is violated by some row" ao adicionar 'daily'). Tipo novo = editar
+-- a lista abaixo, nunca acrescentar outro ADD CONSTRAINT.
+--   'test'  = pref dedicada do botão "Testar canal" (cadastro do contato) e do teste agendado do
+--             sensor — antes o botão ignorava liga/desliga e janela de horário por completo.
+--   'daily' = mensagem diária de "está tudo bem com a climatização". Aqui window_start é o HORÁRIO
+--             DO ENVIO (não o início de uma janela) e window_end/renotify_minutes não são usados —
+--             ver isDailySendTime em services/scheduleWindow.ts.
 ALTER TABLE contact_alert_prefs DROP CONSTRAINT IF EXISTS contact_alert_prefs_alert_type_check;
 ALTER TABLE contact_alert_prefs ADD CONSTRAINT contact_alert_prefs_alert_type_check
-  CHECK (alert_type IN ('temperature', 'humidity', 'connectivity', 'test'));
+  CHECK (alert_type IN ('temperature', 'humidity', 'connectivity', 'test', 'daily'));
+
 INSERT INTO contact_alert_prefs (contact_id, alert_type)
   SELECT id, 'test' FROM contacts
   ON CONFLICT (contact_id, alert_type) DO NOTHING;
 
--- 'daily' = mensagem diária de "está tudo bem com a climatização". Aqui window_start é o HORÁRIO
--- DO ENVIO (não o início de uma janela) e window_end/renotify_minutes não são usados — ver
--- isDailySendTime em services/scheduleWindow.ts. Nasce desligada: ligar a rotina pra toda a base
--- instalada sem o admin pedir seria disparar WhatsApp diário pra todo contato já cadastrado.
-ALTER TABLE contact_alert_prefs DROP CONSTRAINT IF EXISTS contact_alert_prefs_alert_type_check;
-ALTER TABLE contact_alert_prefs ADD CONSTRAINT contact_alert_prefs_alert_type_check
-  CHECK (alert_type IN ('temperature', 'humidity', 'connectivity', 'test', 'daily'));
+-- A diária nasce desligada: ligar a rotina pra toda a base instalada sem o admin pedir seria
+-- disparar WhatsApp diário pra todo contato já cadastrado.
 INSERT INTO contact_alert_prefs (contact_id, alert_type, enabled, days_of_week, window_start)
   SELECT id, 'daily', false, '{1,2,3,4,5}', '08:00' FROM contacts
   ON CONFLICT (contact_id, alert_type) DO NOTHING;

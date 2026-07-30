@@ -60,6 +60,34 @@ Test Files  7 passed (7)
       Tests  108 passed (108)
 ```
 
+## Incidente pós-deploy: crash loop na migração
+
+Primeiro boot com o código novo passou; o segundo entrou em crash loop:
+
+```
+error: check constraint "contact_alert_prefs_alert_type_check" of relation
+       "contact_alert_prefs" is violated by some row
+  at async migrate (file:///app/server/dist/db/index.js:12:5)
+```
+
+**Causa:** `schema.sql` roda inteiro a cada boot e passou a ter **duas** definições da mesma
+constraint. A antiga (sem `'daily'`) vinha primeiro e, do segundo boot em diante, rejeitava as
+linhas `'daily'` que o bloco novo tinha criado no boot anterior. Não era problema de dado — era a
+migração deixando de ser idempotente.
+
+**Correção:** uma única definição da constraint, com a lista completa, antes dos `INSERT` de
+backfill (`e1c4a1f`). Tipo novo daqui pra frente = editar a lista existente, nunca acrescentar
+outro `ADD CONSTRAINT` com o mesmo nome.
+
+| Etapa | Commit | Comando | Resultado |
+|---|---|---|---|
+| RED | `8821634` | `npx vitest run src/db/schema.test.ts` | **2 failed** — constraint duplicada; a 1ª definição não contém `'daily'` |
+| GREEN | `e1c4a1f` | `npm test` | **112 passed** |
+
+O guarda contra reincidência está em `src/db/schema.test.ts`: lê o SQL e falha se algum
+`ADD CONSTRAINT` aparecer duas vezes, ou se o schema inserir um tipo que a constraint em vigor não
+aceita. Sem banco, roda junto da suíte normal.
+
 ## Especificação testada
 
 | # | O que fica garantido | Teste | Tipo | Resultado |
