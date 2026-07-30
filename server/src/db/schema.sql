@@ -123,7 +123,7 @@ CREATE TABLE IF NOT EXISTS notifications (
   alert_id INT NOT NULL REFERENCES alerts(id),
   contact_id INT NOT NULL REFERENCES contacts(id),
   channel TEXT NOT NULL,                   -- 'voice' | 'whatsapp'
-  status TEXT NOT NULL DEFAULT 'queued',   -- queued|sent|failed|skipped_window|skipped_pref
+  status TEXT NOT NULL DEFAULT 'queued',   -- queued|sent|failed|skipped_window|skipped_pref|skipped_channel|skipped_no_voice_text|skipped_no_admin
   detail TEXT,
   created_at TIMESTAMPTZ DEFAULT now()
 );

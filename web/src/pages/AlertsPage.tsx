@@ -34,6 +34,10 @@ const STATUS_LABELS: Record<string, string> = {
   // Alerta operacional (hardware/reinício/firmware) sem nenhum admin com telefone cadastrado.
   // Sem esta linha o alerta aparecia sem notificação nenhuma, igual a uma fila travada.
   skipped_no_admin: 'nenhum admin com telefone cadastrado',
+  // Os dois motivos de "o alerta disparou mas não ligou". Sem eles a linha de voz não existia e
+  // o painel não distinguia configuração de fila de voz travada / Twilio fora do ar.
+  skipped_channel: 'canal desligado no cadastro do contato',
+  skipped_no_voice_text: 'sem texto de voz no template (Mensagens)',
   // Resultado final da ligação de voz, reportado pela Twilio (server/src/routes/twilio.ts).
   // 'completed' NÃO é sinônimo de atendida: a caixa postal da operadora também completa a
   // ligação. Quem atendeu (pessoa x secretária) aparece na coluna Detalhe, vinda do AMD.

@@ -128,7 +128,17 @@ async function notifyContacts(
     const pref = prefs.find((p) => p.contact_id === contact.id && p.alert_type === type);
     for (const channel of channels) {
       const channelEnabled = channel === 'whatsapp' ? contact.channel_whatsapp : contact.channel_voice;
-      if (!channelEnabled) continue; // contato desligou o canal — nada a auditar
+      if (!channelEnabled) {
+        await createNotification(alert.id, contact.id, channel, 'skipped_channel');
+        continue;
+      }
+      // Sem texto de voz no template não há o que falar na ligação. A decisão mora aqui, e não
+      // em quem monta `channels`, pra ficar no mesmo lugar que já audita os outros motivos — fora
+      // daqui ela não deixava rastro e "não ligou" ficava idêntico a fila travada/Twilio fora.
+      if (channel === 'voice' && !texts.voice) {
+        await createNotification(alert.id, contact.id, channel, 'skipped_no_voice_text');
+        continue;
+      }
 
       if (!pref?.enabled) {
         await createNotification(alert.id, contact.id, channel, 'skipped_pref');
@@ -144,7 +154,7 @@ async function notifyContacts(
         if (!shouldRenotify(last ? new Date(last.created_at) : null, pref.renotify_minutes, now)) continue;
       }
 
-      // channels só inclui 'voice' quando texts.voice existe (ver chamadas em evaluateType).
+      // texts.voice garantido pelo guard de skipped_no_voice_text acima.
       const text = channel === 'voice' ? texts.voice! : texts.whatsapp;
       const notification = await createNotification(alert.id, contact.id, channel, 'queued');
       const job = { notificationId: notification.id, phone: contact.phone, text };
@@ -183,8 +193,9 @@ async function evaluateType(
     const texts = await renderMessage(`${type}_fire`, vars);
     const alert = await createAlert(sensor.id, type, value, texts.whatsapp);
     // Ligação de voz é exclusiva de alerta de temperatura, e só no disparo inicial (nunca em
-    // renotify/resolve) — garante "1 ligação por alerta". Sem texto de voz configurado = sem ligação.
-    const channels: Channel[] = type === 'temperature' && texts.voice ? ['whatsapp', 'voice'] : ['whatsapp'];
+    // renotify/resolve) — garante "1 ligação por alerta". Template sem texto de voz e contato com
+    // o canal desligado são decididos (e auditados) dentro de notifyContacts.
+    const channels: Channel[] = type === 'temperature' ? ['whatsapp', 'voice'] : ['whatsapp'];
     if (alert) await notifyContacts(alert, contacts, prefs, type, channels, texts, 'fire');
     return;
   }
@@ -430,8 +441,7 @@ export async function sendTest(sensor: Sensor): Promise<void> {
   const contacts = await listContacts(sensor.client_id);
   const prefs = await listContactAlertPrefsByClient(sensor.client_id);
   await warnBeforeTest(alert, contacts, prefs);
-  const channels: Channel[] = texts.voice ? ['whatsapp', 'voice'] : ['whatsapp'];
-  await notifyContacts(alert, contacts, prefs, 'test', channels, texts, 'fire');
+  await notifyContacts(alert, contacts, prefs, 'test', ['whatsapp', 'voice'], texts, 'fire');
 }
 
 // Teste avulso de um único contato (botão "Testar canal" no cadastro) — mesma pref dedicada
@@ -448,6 +458,5 @@ export async function sendContactTest(contact: Contact): Promise<void> {
   const alert = await createResolvedAlert(sensor.id, 'test', texts.whatsapp);
   const prefs = await listContactAlertPrefsByClient(contact.client_id);
   await warnBeforeTest(alert, [contact], prefs);
-  const channels: Channel[] = texts.voice ? ['whatsapp', 'voice'] : ['whatsapp'];
-  await notifyContacts(alert, [contact], prefs, 'test', channels, texts, 'fire');
+  await notifyContacts(alert, [contact], prefs, 'test', ['whatsapp', 'voice'], texts, 'fire');
 }
