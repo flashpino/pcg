@@ -139,6 +139,22 @@ describe('connectivityVars', () => {
     const sensor = { name: 'Sensor A', local: null, offline_after_seconds: 300 };
     expect(connectivityVars(sensor, '', null).temperatura).toBe('--');
   });
+
+  // O painel anuncia min/max/limite nas 3 mensagens de conectividade, mas elas não eram montadas:
+  // quem editasse o template usando essas variáveis via o campo sair em branco.
+  it('inclui min/max/limite, anunciados no painel para as mensagens de conectividade', () => {
+    const sensor = { name: 'Sensor A', local: 'Sala 1', offline_after_seconds: 300, temp_min: 2, temp_max: 8 };
+    const vars = connectivityVars(sensor, 'Cliente X', 5);
+    expect(vars.min).toBe(2);
+    expect(vars.max).toBe(8);
+    expect(vars.limite).toBe(8); // dentro da faixa: cai no max, mesmo critério de violatedBound
+  });
+
+  it('sem limites configurados no sensor, min/max/limite viram "-" em vez de sumir', () => {
+    const sensor = { name: 'Sensor A', local: null, offline_after_seconds: 300, temp_min: null, temp_max: null };
+    const vars = connectivityVars(sensor, '', null);
+    expect([vars.min, vars.max, vars.limite]).toEqual(['-', '-', '-']);
+  });
 });
 
 describe('notifyAdminsFirmwareUpdate', () => {
@@ -481,6 +497,19 @@ describe('sendTest', () => {
     expect(enqueueWhatsapp).not.toHaveBeenCalled();
   });
 
+  // O aviso prévio era renderizado com vars = {} — qualquer {{$...}} nele saía vazio, inclusive
+  // o {{$local}}, que é o que diz à pessoa QUAL ambiente vai ser testado.
+  it('o aviso prévio também recebe as variáveis padrão', async () => {
+    vi.mocked(queries.listContacts).mockResolvedValue([contatoAtivo]);
+    vi.mocked(queries.listContactAlertPrefsByClient).mockResolvedValue([prefLiberada('test')]);
+    vi.mocked(queries.createNotification).mockResolvedValue({ id: 3 } as never);
+    vi.mocked(queries.getMessageTemplate).mockResolvedValue({ whatsapp: 'aviso [{{$local}}]', voice: null } as never);
+
+    await sendTest(sensor);
+
+    expect(vi.mocked(enqueueWhatsapp).mock.calls[0][0].text).toBe('aviso [Sala 1]');
+  });
+
   // Relato de campo: o aviso "vai ser executado um teste" e a ligação saíam no mesmo instante —
   // o telefone tocava antes de a pessoa ter lido o WhatsApp, que é justamente o que o aviso
   // deveria evitar. O aviso sai na hora; o teste em si só 2 minutos depois.
@@ -532,6 +561,25 @@ describe('sendContactTest', () => {
 
     expect(enqueueWhatsapp).toHaveBeenCalledTimes(2); // aviso + teste
     expect(enqueueWhatsapp).toHaveBeenCalledWith(expect.objectContaining({ phone: '+5511999999999' }), expect.anything());
+  });
+
+  // O painel anuncia {{$temperatura}} e {{$quando}} no template 'test', mas por este caminho elas
+  // não eram montadas — o admin editava o texto e os campos saíam em branco.
+  it('recebe as variáveis padrão anunciadas no painel, inclusive temperatura e quando', async () => {
+    vi.mocked(queries.listSensors).mockResolvedValue([
+      { id: 7, name: 'Sensor A', local: 'Sala 1', last_seen_at: '2026-01-05T12:00:00Z' } as queries.Sensor,
+    ]);
+    vi.mocked(queries.listContactAlertPrefsByClient).mockResolvedValue([prefLiberada('test')]);
+    vi.mocked(queries.createNotification).mockResolvedValue({ id: 4 } as never);
+    vi.mocked(queries.getMessageTemplate).mockResolvedValue({
+      whatsapp: 'local=[{{$local}}] temp=[{{$temperatura}}] nome=[{{$nome}}]',
+      voice: null,
+    } as never);
+    vi.mocked(queryLatestReadings).mockResolvedValue(new Map([[7, { temperature: 21.5 }]]) as never);
+
+    await sendContactTest(contatoAtivo);
+
+    expect(vi.mocked(enqueueWhatsapp).mock.calls[1][0].text).toBe('local=[Sala 1] temp=[21.5] nome=[Fulano]');
   });
 
   // Mesmo intervalo do teste por sensor: o botão "Testar canal" também precisa dar tempo de ler.
@@ -595,6 +643,37 @@ describe('sendDailyReport', () => {
     const { text } = vi.mocked(enqueueWhatsapp).mock.calls[0][0];
     expect(text).toContain('Câmara fria 1: 4.2');
     expect(text).toContain('Sensor B: --');
+  });
+
+  // Relato do usuário: "na mensagem diária não tem as variáveis padrões, eu preciso do local e
+  // não tem". renderTemplate troca variável desconhecida por string vazia, então o campo sumia da
+  // mensagem sem erro nenhum. Todo template precisa receber o conjunto padrão.
+  it('recebe as variáveis padrão — {{$local}}, {{$sensor}} e {{$temperatura}} não saem vazios', async () => {
+    vi.mocked(queries.listSensors).mockResolvedValue([sensores[0]]);
+    vi.mocked(queries.listContactAlertPrefsByClient).mockResolvedValue([prefLiberada('daily')]);
+    vi.mocked(queries.getMessageTemplate).mockResolvedValue({
+      whatsapp: 'local=[{{$local}}] sensor=[{{$sensor}}] temp=[{{$temperatura}}] cliente=[{{$cliente}}]',
+      voice: null,
+    } as never);
+    vi.mocked(queryLatestReadings).mockResolvedValue(new Map([[7, { temperature: 4.2 }]]) as never);
+
+    await sendDailyReport(contatoAtivo);
+
+    const { text } = vi.mocked(enqueueWhatsapp).mock.calls[0][0];
+    expect(text).toBe('local=[Câmara fria 1] sensor=[Sensor A] temp=[4.2] cliente=[Cliente X]');
+  });
+
+  // Com mais de um sensor a diária é uma mensagem só, então as variáveis de sensor viram lista —
+  // melhor que escolher um sensor arbitrário e mentir sobre os outros.
+  it('com vários sensores, {{$local}} e {{$sensor}} listam todos', async () => {
+    vi.mocked(queries.listSensors).mockResolvedValue(sensores);
+    vi.mocked(queries.listContactAlertPrefsByClient).mockResolvedValue([prefLiberada('daily')]);
+    vi.mocked(queries.getMessageTemplate).mockResolvedValue({ whatsapp: '[{{$local}}]', voice: null } as never);
+
+    await sendDailyReport(contatoAtivo);
+
+    const { text } = vi.mocked(enqueueWhatsapp).mock.calls[0][0];
+    expect(text).toBe('[Câmara fria 1, Sensor B]'); // Sensor B não tem local — cai pro nome
   });
 
   // Falsa tranquilização é pior que silêncio: mandar "está tudo bem com a climatização" com um
