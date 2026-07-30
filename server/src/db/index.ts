@@ -50,11 +50,11 @@ const DEFAULT_MESSAGE_TEMPLATES: Record<string, { whatsapp: string; voice?: stri
     whatsapp: '✅ Sensor {{$sensor}} ({{$cliente}} / {{$local}}) atualizou o firmware: {{$de}} → {{$para}}.',
   },
   welcome: { whatsapp: 'Olá {{$nome}}! Você foi cadastrado no monitoramento Proatus.' },
-  // Rotina diária de "está tudo bem" — enviada no dia/horário configurados na pref 'daily' de
-  // cada contato, e só quando não há nenhum alerta em curso (ver sendDailyReport).
+  // Rotina diária de "está tudo bem" — uma mensagem POR SENSOR, no dia/horário configurados na
+  // pref 'daily' de cada contato, e só quando aquele sensor não tem alerta em curso.
   daily: {
     whatsapp:
-      '✅ Bom dia, {{$nome}}! O sistema de climatização de {{$cliente}} está funcionando normalmente ({{$quando}}).\n\n{{$sensores}}',
+      '✅ Bom dia, {{$nome}}! O sistema de climatização de {{$local}} ({{$cliente}}) está funcionando normalmente. Temperatura atual: {{$temperatura}}°C ({{$quando}}).',
   },
   // Voz igual à de temperature_fire — o teste manual (botão "Testar canal") precisa validar a
   // ligação de voz do contato do mesmo jeito que o alerta real faz, não só o WhatsApp.
@@ -93,6 +93,13 @@ export async function seedMessageTemplates(): Promise<void> {
   // "CPD"), pra não sobrescrever customização feita pelo admin em Painel > Mensagens.
   await pool.query("UPDATE message_templates SET whatsapp = $1 WHERE key = 'test_warning' AND whatsapp LIKE '%CPD%'", [
     DEFAULT_MESSAGE_TEMPLATES.test_warning.whatsapp,
+  ]);
+  // Backfill de daily: a 1ª versão era uma mensagem por contato listando todos os sensores em
+  // {{$sensores}}. Agora é uma por sensor, então o texto padrão fala no singular. Só troca se
+  // ainda for exatamente o texto antigo — customização do admin fica de pé.
+  await pool.query("UPDATE message_templates SET whatsapp = $1 WHERE key = 'daily' AND whatsapp = $2", [
+    DEFAULT_MESSAGE_TEMPLATES.daily.whatsapp,
+    '✅ Bom dia, {{$nome}}! O sistema de climatização de {{$cliente}} está funcionando normalmente ({{$quando}}).\n\n{{$sensores}}',
   ]);
   // Backfill de connectivity_resolve: instalações antigas não tinham {{$temperatura}} na mensagem
   // de "voltou a reportar" — só troca se ainda for exatamente o texto antigo sem customização.

@@ -21,7 +21,7 @@ const LABELS: Record<string, string> = {
   welcome: 'Boas-vindas — enviada ao cadastrar contato',
   test: 'Teste de dispositivo (manual/automático)',
   test_warning: 'Aviso enviado 2 minutos antes de qualquer teste',
-  daily: 'Mensagem diária — "está tudo bem" (dia e horário por contato, em Clientes > Contatos)',
+  daily: 'Mensagem diária — "está tudo bem", uma por sensor (dia e horário por contato, em Clientes > Contatos)',
 };
 
 const LEGEND: Record<string, string[]> = {
@@ -38,9 +38,8 @@ const LEGEND: Record<string, string[]> = {
   welcome: ['nome', 'telefone', 'cliente', 'sensor', 'local', 'temperatura'],
   test: ['sensor', 'local', 'cliente', 'temperatura', 'quando', 'nome'],
   test_warning: ['sensor', 'local', 'cliente', 'temperatura', 'quando', 'nome'],
-  // Na diária, sensor/local/temperatura viram lista quando o cliente tem mais de um sensor.
-  // {{$sensores}} é a lista pronta, uma linha por sensor com a temperatura atual.
-  daily: ['nome', 'cliente', 'sensor', 'local', 'temperatura', 'sensores', 'quando'],
+  // Uma mensagem por sensor, então as variáveis falam do sensor daquela mensagem.
+  daily: ['nome', 'cliente', 'sensor', 'local', 'temperatura', 'quando'],
 };
 
 function TemplateForm({ tpl, onSaved }: { tpl: Template; onSaved: () => void }) {

@@ -465,37 +465,35 @@ export async function sendTest(sensor: Sensor): Promise<void> {
 
 // Rotina diária: "está tudo bem com a climatização". Diferente dos alertas, não nasce de um
 // evento do sensor — quem agenda é a pref 'daily' de cada contato (dias + horário), conferida a
-// cada minuto pelo notifier. Um envio por contato, cobrindo todos os sensores do cliente.
-export async function sendDailyReport(contact: Contact): Promise<void> {
-  const sensors = await listSensors(contact.client_id);
-  if (sensors.length === 0) return; // cliente sem sensor não tem o que reportar
-
-  const latest = await queryLatestReadings(sensors.map((s) => s.id));
-  const temp = (s: Sensor) => latest.get(s.id)?.temperature ?? '--';
+// cada minuto pelo notifier. UMA MENSAGEM POR SENSOR: cada uma fala do seu, então {{$local}} e
+// {{$temperatura}} são valores diretos e não uma lista que o leitor precisa cruzar.
+export async function sendDailyReport(contact: Contact, sensor: Sensor): Promise<void> {
+  const temperatura = (await queryLatestReadings([sensor.id])).get(sensor.id)?.temperature ?? '--';
+  const local = sensor.local || sensor.name; // sensor sem local cai pro nome, nunca vazio
   const vars = {
     nome: contact.name,
     cliente: (await getClient(contact.client_id))?.name ?? '',
     quando: new Date().toLocaleString('pt-BR', { timeZone: contact.timezone }),
-    // A diária é UMA mensagem cobrindo todos os sensores do cliente, então as variáveis padrão
-    // viram lista — escolher o primeiro sensor mentiria sobre os outros. Com um sensor só (caso
-    // comum) o resultado é idêntico ao das outras mensagens.
-    sensor: sensors.map((s) => s.name).join(', '),
-    local: sensors.map((s) => s.local || s.name).join(', '),
-    temperatura: sensors.map(temp).join(', '),
-    // Sensor sem leitura recente entra com '--' em vez de sumir da lista: some da mensagem é
-    // exatamente o que faz um sensor mudo passar despercebido no relatório de "tudo bem".
-    sensores: sensors.map((s) => `• ${s.local || s.name}: ${temp(s)}°C`).join('\n'),
+    sensor: sensor.name,
+    local,
+    temperatura,
+    // Herdada da versão "uma mensagem por contato" e mantida porque é o que está no template já
+    // semeado em produção — hoje é a linha deste sensor. Sem isso, quem não editou o texto
+    // receberia a mensagem com um buraco no lugar da lista.
+    sensores: `• ${local}: ${temperatura}°C`,
   };
 
   const texts = await renderMessage('daily', vars);
   // Sem estado firing real (igual 'test'/'reboot') — o alerta resolvido é o pendurador da
   // notification, e é o que deixa a diária auditável no painel de Alertas.
-  const alert = await createResolvedAlert(sensors[0].id, 'daily', texts.whatsapp);
+  const alert = await createResolvedAlert(sensor.id, 'daily', texts.whatsapp);
 
-  // Falsa tranquilização é pior que silêncio: com um alarme aberto (temperatura fora do limite,
-  // sensor offline, DHT travado) a diária contradiria o alerta que o mesmo contato recebeu. O
-  // motivo fica gravado — "não chegou a diária" precisa se distinguir de fila travada.
-  if ((await listFiringAlertsByClient(contact.client_id)).length > 0) {
+  // Falsa tranquilização é pior que silêncio: com um alarme aberto NESTE sensor (fora do limite,
+  // offline, DHT travado) a diária contradiria o alerta que o mesmo contato recebeu. Só este
+  // sensor: um em alarme não cala o "tudo bem" dos outros. O motivo fica gravado — "não chegou a
+  // diária" precisa se distinguir de fila travada.
+  const firing = await listFiringAlertsByClient(contact.client_id);
+  if (firing.some((a) => a.sensor_id === sensor.id)) {
     await createNotification(alert.id, contact.id, 'whatsapp', 'skipped_alert_firing');
     return;
   }

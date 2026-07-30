@@ -163,10 +163,13 @@ async function runDailyReports(): Promise<void> {
       if (!contact.active) continue;
       const pref = prefs.find((p) => p.contact_id === contact.id && p.alert_type === 'daily');
       if (!pref?.enabled || !isDailySendTime(pref, contact.timezone, now)) continue;
-      try {
-        await sendDailyReport(contact);
-      } catch (err) {
-        console.error('sendDailyReport falhou', { contactId: contact.id, err });
+      // Uma mensagem por sensor: o contato de um cliente com 3 câmaras recebe 3 mensagens.
+      for (const sensor of await listSensors(client.id)) {
+        try {
+          await sendDailyReport(contact, sensor);
+        } catch (err) {
+          console.error('sendDailyReport falhou', { contactId: contact.id, sensorId: sensor.id, err });
+        }
       }
     }
   }
