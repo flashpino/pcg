@@ -5,4 +5,5 @@ dist/
 firmware/.pio/
 firmware/src/config.h
 server/firmware-bin/
+coverage/
 graphify-out/
