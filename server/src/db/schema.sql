@@ -98,6 +98,17 @@ INSERT INTO contact_alert_prefs (contact_id, alert_type)
   SELECT id, 'test' FROM contacts
   ON CONFLICT (contact_id, alert_type) DO NOTHING;
 
+-- 'daily' = mensagem diária de "está tudo bem com a climatização". Aqui window_start é o HORÁRIO
+-- DO ENVIO (não o início de uma janela) e window_end/renotify_minutes não são usados — ver
+-- isDailySendTime em services/scheduleWindow.ts. Nasce desligada: ligar a rotina pra toda a base
+-- instalada sem o admin pedir seria disparar WhatsApp diário pra todo contato já cadastrado.
+ALTER TABLE contact_alert_prefs DROP CONSTRAINT IF EXISTS contact_alert_prefs_alert_type_check;
+ALTER TABLE contact_alert_prefs ADD CONSTRAINT contact_alert_prefs_alert_type_check
+  CHECK (alert_type IN ('temperature', 'humidity', 'connectivity', 'test', 'daily'));
+INSERT INTO contact_alert_prefs (contact_id, alert_type, enabled, days_of_week, window_start)
+  SELECT id, 'daily', false, '{1,2,3,4,5}', '08:00' FROM contacts
+  ON CONFLICT (contact_id, alert_type) DO NOTHING;
+
 CREATE TABLE IF NOT EXISTS alerts (
   id SERIAL PRIMARY KEY,
   sensor_id INT NOT NULL REFERENCES sensors(id),
@@ -114,7 +125,9 @@ CREATE TABLE IF NOT EXISTS alerts (
 -- Distinto de 'connectivity', que é ausência de ingest. Sem esse tipo, sensor com DHT morto era
 -- rotulado "offline" e o alerta mandava a equipe caçar problema de rede que não existia.
 ALTER TABLE alerts DROP CONSTRAINT IF EXISTS alerts_type_check;
-ALTER TABLE alerts ADD CONSTRAINT alerts_type_check CHECK (type IN ('temperature','humidity','connectivity','test','reboot','firmware','hardware'));
+-- 'daily' = mensagem diária de "está tudo bem" (sem estado firing real, igual 'test'/'reboot':
+-- nasce resolved via createResolvedAlert, só pra pendurar a notification e deixar rastro).
+ALTER TABLE alerts ADD CONSTRAINT alerts_type_check CHECK (type IN ('temperature','humidity','connectivity','test','reboot','firmware','hardware','daily'));
 -- dedup no banco: só 1 alerta firing por sensor+tipo
 CREATE UNIQUE INDEX IF NOT EXISTS alerts_one_firing ON alerts (sensor_id, type) WHERE state = 'firing';
 
@@ -123,7 +136,7 @@ CREATE TABLE IF NOT EXISTS notifications (
   alert_id INT NOT NULL REFERENCES alerts(id),
   contact_id INT NOT NULL REFERENCES contacts(id),
   channel TEXT NOT NULL,                   -- 'voice' | 'whatsapp'
-  status TEXT NOT NULL DEFAULT 'queued',   -- queued|sent|failed|skipped_window|skipped_pref|skipped_channel|skipped_no_voice_text|skipped_no_admin
+  status TEXT NOT NULL DEFAULT 'queued',   -- queued|sent|failed|skipped_window|skipped_pref|skipped_channel|skipped_no_voice_text|skipped_no_admin|skipped_alert_firing
   detail TEXT,
   created_at TIMESTAMPTZ DEFAULT now()
 );

@@ -50,6 +50,12 @@ const DEFAULT_MESSAGE_TEMPLATES: Record<string, { whatsapp: string; voice?: stri
     whatsapp: '✅ Sensor {{$sensor}} ({{$cliente}} / {{$local}}) atualizou o firmware: {{$de}} → {{$para}}.',
   },
   welcome: { whatsapp: 'Olá {{$nome}}! Você foi cadastrado no monitoramento Proatus.' },
+  // Rotina diária de "está tudo bem" — enviada no dia/horário configurados na pref 'daily' de
+  // cada contato, e só quando não há nenhum alerta em curso (ver sendDailyReport).
+  daily: {
+    whatsapp:
+      '✅ Bom dia, {{$nome}}! O sistema de climatização de {{$cliente}} está funcionando normalmente ({{$quando}}).\n\n{{$sensores}}',
+  },
   // Voz igual à de temperature_fire — o teste manual (botão "Testar canal") precisa validar a
   // ligação de voz do contato do mesmo jeito que o alerta real faz, não só o WhatsApp.
   test: {

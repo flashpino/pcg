@@ -10,6 +10,7 @@ import {
   listAdminsWithPhone,
   listContactAlertPrefsByClient,
   listContacts,
+  listFiringAlertsByClient,
   listSensors,
   resolveAlert,
   type Alert,
@@ -30,7 +31,7 @@ export interface Bound {
 }
 
 export type Transition = 'fire' | 'resolve' | 'renotify' | 'none';
-type AlertType = 'temperature' | 'humidity' | 'connectivity' | 'test';
+type AlertType = 'temperature' | 'humidity' | 'connectivity' | 'test' | 'daily';
 
 export function isOutOfBounds(value: number, bound: Bound): boolean {
   if (bound.max !== null && value > bound.max) return true;
@@ -442,6 +443,42 @@ export async function sendTest(sensor: Sensor): Promise<void> {
   const prefs = await listContactAlertPrefsByClient(sensor.client_id);
   await warnBeforeTest(alert, contacts, prefs);
   await notifyContacts(alert, contacts, prefs, 'test', ['whatsapp', 'voice'], texts, 'fire');
+}
+
+// Rotina diária: "está tudo bem com a climatização". Diferente dos alertas, não nasce de um
+// evento do sensor — quem agenda é a pref 'daily' de cada contato (dias + horário), conferida a
+// cada minuto pelo notifier. Um envio por contato, cobrindo todos os sensores do cliente.
+export async function sendDailyReport(contact: Contact): Promise<void> {
+  const sensors = await listSensors(contact.client_id);
+  if (sensors.length === 0) return; // cliente sem sensor não tem o que reportar
+
+  const latest = await queryLatestReadings(sensors.map((s) => s.id));
+  const vars = {
+    nome: contact.name,
+    cliente: (await getClient(contact.client_id))?.name ?? '',
+    quando: new Date().toLocaleString('pt-BR', { timeZone: contact.timezone }),
+    // Sensor sem leitura recente entra com '--' em vez de sumir da lista: some da mensagem é
+    // exatamente o que faz um sensor mudo passar despercebido no relatório de "tudo bem".
+    sensores: sensors
+      .map((s) => `• ${s.local || s.name}: ${latest.get(s.id)?.temperature ?? '--'}°C`)
+      .join('\n'),
+  };
+
+  const texts = await renderMessage('daily', vars);
+  // Sem estado firing real (igual 'test'/'reboot') — o alerta resolvido é o pendurador da
+  // notification, e é o que deixa a diária auditável no painel de Alertas.
+  const alert = await createResolvedAlert(sensors[0].id, 'daily', texts.whatsapp);
+
+  // Falsa tranquilização é pior que silêncio: com um alarme aberto (temperatura fora do limite,
+  // sensor offline, DHT travado) a diária contradiria o alerta que o mesmo contato recebeu. O
+  // motivo fica gravado — "não chegou a diária" precisa se distinguir de fila travada.
+  if ((await listFiringAlertsByClient(contact.client_id)).length > 0) {
+    await createNotification(alert.id, contact.id, 'whatsapp', 'skipped_alert_firing');
+    return;
+  }
+
+  const prefs = await listContactAlertPrefsByClient(contact.client_id);
+  await notifyContacts(alert, [contact], prefs, 'daily', ['whatsapp'], texts, 'fire');
 }
 
 // Teste avulso de um único contato (botão "Testar canal" no cadastro) — mesma pref dedicada

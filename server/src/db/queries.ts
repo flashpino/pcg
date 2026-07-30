@@ -221,7 +221,7 @@ export interface ContactInput {
   active?: boolean;
 }
 
-const ALERT_TYPES = ['temperature', 'humidity', 'connectivity', 'test'] as const;
+const ALERT_TYPES = ['temperature', 'humidity', 'connectivity', 'test', 'daily'] as const;
 
 export const listContacts = (clientId?: number) =>
   clientId === undefined
@@ -269,7 +269,7 @@ export const deleteContact = (id: number) =>
 
 export interface ContactAlertPref {
   contact_id: number;
-  alert_type: 'temperature' | 'humidity' | 'connectivity' | 'test';
+  alert_type: 'temperature' | 'humidity' | 'connectivity' | 'test' | 'daily';
   enabled: boolean;
   days_of_week: number[];
   window_start: string | null;
@@ -311,7 +311,7 @@ export const upsertContactAlertPref = (
 export interface Alert {
   id: number;
   sensor_id: number;
-  type: 'temperature' | 'humidity' | 'connectivity' | 'test' | 'reboot' | 'firmware' | 'hardware';
+  type: 'temperature' | 'humidity' | 'connectivity' | 'test' | 'reboot' | 'firmware' | 'hardware' | 'daily';
   state: 'firing' | 'resolved';
   value: number | null;
   message: string;
@@ -423,6 +423,17 @@ export const listAlertsByClient = (clientId: number, limit = 50) =>
       `SELECT a.* FROM alerts a JOIN sensors s ON s.id = a.sensor_id
        WHERE s.client_id = $1 ORDER BY a.fired_at DESC LIMIT $2`,
       [clientId, limit],
+    )
+    .then((r) => r.rows);
+
+// Qualquer alerta em curso nos sensores do cliente — a mensagem diária de "está tudo bem" não
+// pode sair por cima de um alarme aberto (ver sendDailyReport).
+export const listFiringAlertsByClient = (clientId: number) =>
+  pool
+    .query<Alert>(
+      `SELECT a.* FROM alerts a JOIN sensors s ON s.id = a.sensor_id
+       WHERE s.client_id = $1 AND a.state = 'firing'`,
+      [clientId],
     )
     .then((r) => r.rows);
 

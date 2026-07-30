@@ -41,3 +41,16 @@ export function isWithinWindow(pref: WindowLike, now: Date): boolean {
   // Janela cruzando meia-noite (ex. 22:00–06:00): start > end inverte a comparação.
   return start <= end ? minutes >= start && minutes < end : minutes >= start || minutes < end;
 }
+
+// Mensagem diária: window_start é reusado como HORÁRIO DO ENVIO, não como início de janela — o
+// tick roda a cada minuto e só o minuto exato dispara (um envio por dia, sem repetir). Por isso
+// horário vazio aqui significa "não envia", o oposto de isWithinWindow (onde vazio libera geral).
+export function isDailySendTime(
+  pref: { days_of_week: number[]; window_start: string | null },
+  timezone: string,
+  now: Date,
+): boolean {
+  if (pref.window_start === null) return false;
+  const { day, minutes } = localParts(timezone, now);
+  return pref.days_of_week.includes(day) && minutes === toMinutes(pref.window_start);
+}

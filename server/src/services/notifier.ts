@@ -3,14 +3,20 @@ import twilio from 'twilio';
 import {
   getSetting,
   listClients,
+  listContactAlertPrefsByClient,
+  listContacts,
   listSensors,
   updateNotificationStatus,
 } from '../db/queries.js';
-import { sendTest } from './alertService.js';
+import { sendDailyReport, sendTest } from './alertService.js';
+import { isDailySendTime } from './scheduleWindow.js';
 
 const WHATSAPP_QUEUE = 'notify-whatsapp';
 const VOICE_QUEUE = 'notify-voice';
-const WEEKLY_TEST_QUEUE = 'weekly-test';
+// Tick de 1 minuto que dirige tudo que é agendado (teste automático do sensor + mensagem diária).
+// O nome da fila continua 'weekly-test' de propósito: pg-boss identifica a fila pela string, e
+// trocá-la deixaria o agendamento antigo órfão no banco.
+const SCHEDULE_TICK_QUEUE = 'weekly-test';
 const QUEUE_OPTS = { retryLimit: 5, retryBackoff: true, expireInSeconds: 120 };
 
 const WEEKDAY_TO_DOW: Record<string, string> = { Sun: '0', Mon: '1', Tue: '2', Wed: '3', Thu: '4', Fri: '5', Sat: '6' };
@@ -140,12 +146,33 @@ async function runScheduledTests(): Promise<void> {
   }
 }
 
+// Mensagem diária de "está tudo bem": o agendamento é POR CONTATO (pref 'daily': dias da semana
+// + horário), não por sensor — conferido a cada minuto no mesmo tick do teste automático.
+// Uma falha isolada não pode derrubar o laço: o job seria reagendado pelo pg-boss e os contatos
+// já atendidos receberiam a mensagem de novo.
+async function runDailyReports(): Promise<void> {
+  const now = new Date();
+  for (const client of await listClients()) {
+    const prefs = await listContactAlertPrefsByClient(client.id);
+    for (const contact of await listContacts(client.id)) {
+      if (!contact.active) continue;
+      const pref = prefs.find((p) => p.contact_id === contact.id && p.alert_type === 'daily');
+      if (!pref?.enabled || !isDailySendTime(pref, contact.timezone, now)) continue;
+      try {
+        await sendDailyReport(contact);
+      } catch (err) {
+        console.error('sendDailyReport falhou', { contactId: contact.id, err });
+      }
+    }
+  }
+}
+
 export async function startNotifier(): Promise<void> {
   const b = getBoss();
   await b.start();
   await b.createQueue(WHATSAPP_QUEUE);
   await b.createQueue(VOICE_QUEUE);
-  await b.createQueue(WEEKLY_TEST_QUEUE);
+  await b.createQueue(SCHEDULE_TICK_QUEUE);
 
   // SERIALIZADA (localConcurrency 1) + jitter 3-8s: rajada de WhatsApp = bloqueio do número pela Meta.
   // Único caminho de saída de WhatsApp do sistema inteiro — alertas, boas-vindas e testes passam aqui.
@@ -162,14 +189,15 @@ export async function startNotifier(): Promise<void> {
     await runJob(job.data, sendVoice);
   });
 
-  await b.work(WEEKLY_TEST_QUEUE, async () => {
+  await b.work(SCHEDULE_TICK_QUEUE, async () => {
     await runScheduledTests();
+    await runDailyReports();
   });
 
   // Roda todo minuto — cada sensor compara seu próprio agendamento (ou o padrão global) contra
   // o horário atual dentro de runScheduledTests. Idempotente: chamar em todo boot é o padrão
   // do pg-boss (upsert pelo nome da fila).
-  await b.schedule(WEEKLY_TEST_QUEUE, '* * * * *', {}, { tz: 'America/Sao_Paulo' });
+  await b.schedule(SCHEDULE_TICK_QUEUE, '* * * * *', {}, { tz: 'America/Sao_Paulo' });
 }
 
 export const getEvolutionConnectionState = () =>

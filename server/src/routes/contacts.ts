@@ -63,19 +63,19 @@ export async function contactsRoutes(app: FastifyInstance): Promise<void> {
     reply.status(204);
   });
 
-  // 4 prefs por contato (temperature/humidity/connectivity/test), semeadas por createContact.
+  // 5 prefs por contato (temperature/humidity/connectivity/test/daily), semeadas por createContact.
   app.get<{ Params: { id: string } }>('/api/contacts/:id/alert-prefs', async (req) =>
     listContactAlertPrefs(Number(req.params.id)),
   );
 
-  const ALERT_TYPES = ['temperature', 'humidity', 'connectivity', 'test'];
+  const ALERT_TYPES = ['temperature', 'humidity', 'connectivity', 'test', 'daily'];
   app.put<{
     Params: { id: string; type: string };
     Body: Omit<ContactAlertPref, 'contact_id' | 'alert_type'>;
   }>('/api/contacts/:id/alert-prefs/:type', async (req) => {
     const { type } = req.params;
     if (!ALERT_TYPES.includes(type)) {
-      throw Object.assign(new Error("type deve ser 'temperature', 'humidity', 'connectivity' ou 'test'"), { statusCode: 400 });
+      throw Object.assign(new Error(`type deve ser um de: ${ALERT_TYPES.join(', ')}`), { statusCode: 400 });
     }
     const { enabled, days_of_week, window_start, window_end, renotify_minutes } = req.body ?? {};
     return upsertContactAlertPref(Number(req.params.id), type as ContactAlertPref['alert_type'], {
