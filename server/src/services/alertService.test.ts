@@ -3,6 +3,7 @@ import {
   connectivityVars,
   decideBinaryTransition,
   decideTransition,
+  evaluate,
   evaluateConnectivity,
   evaluateHardware,
   isBackInBounds,
@@ -511,5 +512,65 @@ describe('sendContactTest', () => {
 
     expect(enqueueWhatsapp).toHaveBeenCalledTimes(2); // aviso + teste
     expect(enqueueWhatsapp).toHaveBeenCalledWith(expect.objectContaining({ phone: '+5511999999999' }));
+  });
+});
+
+// Relato de campo: "o sensor proatus_F794 tem um alerta disparado de temperatura mas não fez a
+// ligação". O alerta existe e o WhatsApp saiu — só a ligação não. As duas razões possíveis pra
+// isso saíam do sistema sem gravar linha nenhuma em notifications, e no painel "não ligou por
+// configuração" ficava idêntico a "a fila de voz travou" / "a Twilio caiu".
+// Fica por último no arquivo de propósito: vi.clearAllMocks() não restaura implementações, então
+// o getMessageTemplate com voz definido aqui vazaria pros describes seguintes.
+describe('evaluate — por que a ligação de temperatura não saiu', () => {
+  const sensor = {
+    id: 7,
+    name: 'proatus_F794',
+    local: 'Sala 1',
+    client_id: 1,
+    temp_min: null,
+    temp_max: 30,
+    hum_min: null,
+    hum_max: null,
+  } as unknown as queries.Sensor;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(queries.getFiringAlert).mockResolvedValue(undefined as unknown as queries.Alert);
+    vi.mocked(queries.createAlert).mockResolvedValue({ id: 70 } as queries.Alert);
+    vi.mocked(queries.listContacts).mockResolvedValue([contatoAtivo]);
+    vi.mocked(queries.listContactAlertPrefsByClient).mockResolvedValue([prefLiberada('temperature')]);
+    vi.mocked(queries.createNotification).mockResolvedValue({ id: 8 } as never);
+    vi.mocked(queries.getMessageTemplate).mockResolvedValue({ whatsapp: 'fora do limite', voice: 'alô' } as never);
+  });
+
+  it('canal de voz desligado no contato registra skipped_channel em vez de sumir em silêncio', async () => {
+    vi.mocked(queries.listContacts).mockResolvedValue([{ ...contatoAtivo, channel_voice: false }]);
+
+    await evaluate(sensor, { temp: 31, hum: 50 });
+
+    expect(queries.createNotification).toHaveBeenCalledWith(70, 5, 'voice', 'skipped_channel');
+    expect(enqueueVoice).not.toHaveBeenCalled();
+    expect(enqueueWhatsapp).toHaveBeenCalledTimes(1); // o WhatsApp saiu — é o que o operador viu
+  });
+
+  // Painel > Mensagens permite salvar temperature_fire com o campo de voz vazio; a partir daí
+  // nenhum alerta de temperatura liga pra ninguém, e nada no painel diz isso.
+  it('template de temperatura sem texto de voz registra skipped_no_voice_text', async () => {
+    vi.mocked(queries.getMessageTemplate).mockResolvedValue({ whatsapp: 'fora do limite', voice: null } as never);
+
+    await evaluate(sensor, { temp: 31, hum: 50 });
+
+    expect(queries.createNotification).toHaveBeenCalledWith(70, 5, 'voice', 'skipped_no_voice_text');
+    expect(enqueueVoice).not.toHaveBeenCalled();
+  });
+
+  // Guarda a regra que importa: com canal ligado e texto configurado a ligação continua saindo,
+  // uma só, junto do WhatsApp.
+  it('canal ligado e texto configurado dispara WhatsApp e ligação', async () => {
+    await evaluate(sensor, { temp: 31, hum: 50 });
+
+    expect(enqueueWhatsapp).toHaveBeenCalledTimes(1);
+    expect(enqueueVoice).toHaveBeenCalledTimes(1);
+    expect(enqueueVoice).toHaveBeenCalledWith(expect.objectContaining({ phone: '+5511999999999', text: 'alô' }));
   });
 });
