@@ -10,11 +10,13 @@ import {
   notifyAdminsFirmwareUpdate,
   renotifyValue,
   sendContactTest,
+  sendDailyReport,
   sendTest,
   shouldRenotify,
   violatedBound,
 } from './alertService.js';
 import * as queries from '../db/queries.js';
+import { queryLatestReadings } from './influx.js';
 import { enqueueVoice, enqueueWhatsapp } from './notifier.js';
 
 // Só o necessário pros caminhos de notificação de admin — o resto do arquivo testa função pura.
@@ -30,6 +32,7 @@ vi.mock('../db/queries.js', () => ({
   listAdminsWithPhone: vi.fn(async () => []),
   listContactAlertPrefsByClient: vi.fn(),
   listContacts: vi.fn(),
+  listFiringAlertsByClient: vi.fn(async () => []),
   listSensors: vi.fn(),
   resolveAlert: vi.fn(),
 }));
@@ -512,6 +515,88 @@ describe('sendContactTest', () => {
 
     expect(enqueueWhatsapp).toHaveBeenCalledTimes(2); // aviso + teste
     expect(enqueueWhatsapp).toHaveBeenCalledWith(expect.objectContaining({ phone: '+5511999999999' }));
+  });
+});
+
+// Mensagem diária de "está tudo bem": mesma engrenagem de notifyContacts (active/enabled/canal),
+// mas com pref própria ('daily') e horário exato por contato em vez de janela.
+describe('sendDailyReport', () => {
+  const sensores = [
+    { id: 7, name: 'Sensor A', local: 'Câmara fria 1', client_id: 1 },
+    { id: 8, name: 'Sensor B', local: null, client_id: 1 },
+  ] as queries.Sensor[];
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(queries.listFiringAlertsByClient).mockResolvedValue([]);
+    vi.mocked(queries.createNotification).mockResolvedValue({ id: 11 } as never);
+  });
+
+  it('cliente sem sensor cadastrado não envia nada (não tem o que reportar)', async () => {
+    vi.mocked(queries.listSensors).mockResolvedValue([]);
+
+    await sendDailyReport(contatoAtivo);
+
+    expect(queries.createResolvedAlert).not.toHaveBeenCalled();
+    expect(enqueueWhatsapp).not.toHaveBeenCalled();
+  });
+
+  it('tudo normal: um WhatsApp por contato, pendurado num alerta do tipo daily', async () => {
+    vi.mocked(queries.listSensors).mockResolvedValue(sensores);
+    vi.mocked(queries.listContactAlertPrefsByClient).mockResolvedValue([prefLiberada('daily')]);
+
+    await sendDailyReport(contatoAtivo);
+
+    expect(queries.createResolvedAlert).toHaveBeenCalledWith(7, 'daily', expect.any(String));
+    expect(enqueueWhatsapp).toHaveBeenCalledTimes(1);
+    expect(enqueueWhatsapp).toHaveBeenCalledWith(expect.objectContaining({ phone: '+5511999999999' }));
+  });
+
+  it('{{$sensores}} lista cada sensor com a temperatura atual (local, ou nome quando sem local)', async () => {
+    vi.mocked(queries.listSensors).mockResolvedValue(sensores);
+    vi.mocked(queries.listContactAlertPrefsByClient).mockResolvedValue([prefLiberada('daily')]);
+    vi.mocked(queries.getMessageTemplate).mockResolvedValue({ whatsapp: '{{$sensores}}', voice: null } as never);
+    vi.mocked(queryLatestReadings).mockResolvedValue(
+      new Map([[7, { temperature: 4.2 }]]) as never, // sensor 8 sem leitura recente
+    );
+
+    await sendDailyReport(contatoAtivo);
+
+    const { text } = vi.mocked(enqueueWhatsapp).mock.calls[0][0];
+    expect(text).toContain('Câmara fria 1: 4.2');
+    expect(text).toContain('Sensor B: --');
+  });
+
+  // Falsa tranquilização é pior que silêncio: mandar "está tudo bem com a climatização" com um
+  // sensor fora do limite (ou offline) contradiz o alerta que o mesmo contato acabou de receber.
+  it('com alerta disparado em curso não manda "tudo bem" — grava skipped_alert_firing', async () => {
+    vi.mocked(queries.listSensors).mockResolvedValue(sensores);
+    vi.mocked(queries.listContactAlertPrefsByClient).mockResolvedValue([prefLiberada('daily')]);
+    vi.mocked(queries.listFiringAlertsByClient).mockResolvedValue([{ id: 1, type: 'temperature' } as queries.Alert]);
+
+    await sendDailyReport(contatoAtivo);
+
+    expect(queries.createNotification).toHaveBeenCalledWith(42, 5, 'whatsapp', 'skipped_alert_firing');
+    expect(enqueueWhatsapp).not.toHaveBeenCalled();
+  });
+
+  it('pref daily desligada grava skipped_pref e não enfileira', async () => {
+    vi.mocked(queries.listSensors).mockResolvedValue(sensores);
+    vi.mocked(queries.listContactAlertPrefsByClient).mockResolvedValue([{ ...prefLiberada('daily'), enabled: false }]);
+
+    await sendDailyReport(contatoAtivo);
+
+    expect(queries.createNotification).toHaveBeenCalledWith(42, 5, 'whatsapp', 'skipped_pref');
+    expect(enqueueWhatsapp).not.toHaveBeenCalled();
+  });
+
+  it('contato inativo não recebe a diária', async () => {
+    vi.mocked(queries.listSensors).mockResolvedValue(sensores);
+    vi.mocked(queries.listContactAlertPrefsByClient).mockResolvedValue([prefLiberada('daily')]);
+
+    await sendDailyReport({ ...contatoAtivo, active: false });
+
+    expect(enqueueWhatsapp).not.toHaveBeenCalled();
   });
 });
 
