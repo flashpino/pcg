@@ -12,7 +12,7 @@ interface Contact {
   active: boolean;
 }
 
-type AlertType = 'connectivity' | 'temperature' | 'humidity' | 'test';
+type AlertType = 'connectivity' | 'temperature' | 'humidity' | 'test' | 'daily';
 
 interface AlertPref {
   alert_type: AlertType;
@@ -24,25 +24,35 @@ interface AlertPref {
 }
 
 const DIAS = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sab'];
-const TYPE_ORDER: AlertType[] = ['connectivity', 'temperature', 'humidity', 'test'];
+const TYPE_ORDER: AlertType[] = ['connectivity', 'temperature', 'humidity', 'test', 'daily'];
 const TYPE_LABELS: Record<AlertType, string> = {
   connectivity: 'Conectividade (Online/Offline)',
   temperature: 'Temperatura',
   humidity: 'Umidade',
   test: 'Teste manual',
+  daily: 'Mensagem diária (está tudo bem)',
 };
 
 function emptyPref(type: AlertType): AlertPref {
+  // A diária não é alerta: os dias/horário são o AGENDAMENTO do envio, então nasce seg-sex 08:00
+  // e desligada — ligar sozinha significaria um WhatsApp por dia pra todo contato novo.
+  if (type === 'daily') {
+    return { alert_type: type, enabled: false, days_of_week: [1, 2, 3, 4, 5], window_start: '08:00', window_end: null, renotify_minutes: 0 };
+  }
   return { alert_type: type, enabled: type !== 'humidity', days_of_week: [0, 1, 2, 3, 4, 5, 6], window_start: null, window_end: null, renotify_minutes: 60 };
 }
 
 function emptyPrefs(): Record<AlertType, AlertPref> {
-  return { connectivity: emptyPref('connectivity'), temperature: emptyPref('temperature'), humidity: emptyPref('humidity'), test: emptyPref('test') };
+  return { connectivity: emptyPref('connectivity'), temperature: emptyPref('temperature'), humidity: emptyPref('humidity'), test: emptyPref('test'), daily: emptyPref('daily') };
 }
 
 function emptyForm(clientId: number) {
   return { client_id: clientId, name: '', phone: '', channel_voice: true, channel_whatsapp: true, timezone: 'America/Sao_Paulo', active: true, welcome: false };
 }
+
+// O Postgres devolve TIME como 'HH:MM:SS' e <input type="time"> sem step= descarta o valor com
+// segundos, deixando o campo em branco depois de recarregar o contato.
+const hhmm = (t: string | null) => t?.slice(0, 5) ?? '';
 
 function AlertPrefSection({ pref, onChange }: { pref: AlertPref; onChange: (pref: AlertPref) => void }) {
   function toggleDay(day: number) {
@@ -67,31 +77,46 @@ function AlertPrefSection({ pref, onChange }: { pref: AlertPref; onChange: (pref
               </label>
             ))}
           </div>
-          <div className="inline">
-            <label>
-              janela (vazio = sem restrição de horário){' '}
-              <input
-                type="time"
-                value={pref.window_start ?? ''}
-                onChange={(e) => onChange({ ...pref, window_start: e.target.value || null })}
-              />
-              {' – '}
-              <input
-                type="time"
-                value={pref.window_end ?? ''}
-                onChange={(e) => onChange({ ...pref, window_end: e.target.value || null })}
-              />
-            </label>
-            <label>
-              re-alerta (min){' '}
-              <input
-                type="number"
-                style={{ width: '4rem' }}
-                value={pref.renotify_minutes}
-                onChange={(e) => onChange({ ...pref, renotify_minutes: Number(e.target.value) })}
-              />
-            </label>
-          </div>
+          {pref.alert_type === 'daily' ? (
+            <div className="inline">
+              <label>
+                horário do envio{' '}
+                <input
+                  type="time"
+                  required
+                  value={hhmm(pref.window_start)}
+                  onChange={(e) => onChange({ ...pref, window_start: e.target.value || null })}
+                />
+              </label>
+              <small>Enviada nos dias marcados, só se nenhum alerta estiver disparado.</small>
+            </div>
+          ) : (
+            <div className="inline">
+              <label>
+                janela (vazio = sem restrição de horário){' '}
+                <input
+                  type="time"
+                  value={hhmm(pref.window_start)}
+                  onChange={(e) => onChange({ ...pref, window_start: e.target.value || null })}
+                />
+                {' – '}
+                <input
+                  type="time"
+                  value={hhmm(pref.window_end)}
+                  onChange={(e) => onChange({ ...pref, window_end: e.target.value || null })}
+                />
+              </label>
+              <label>
+                re-alerta (min){' '}
+                <input
+                  type="number"
+                  style={{ width: '4rem' }}
+                  value={pref.renotify_minutes}
+                  onChange={(e) => onChange({ ...pref, renotify_minutes: Number(e.target.value) })}
+                />
+              </label>
+            </div>
+          )}
         </>
       )}
     </div>
@@ -193,7 +218,10 @@ export function ClientContacts({ clientId }: { clientId: number }) {
 
         <h3>Preferências de alertas</h3>
         <p>
-          <small>Cada tipo de alerta tem seu próprio liga/desliga, dias, horário e intervalo de re-alerta.</small>
+          <small>
+            Cada tipo de alerta tem seu próprio liga/desliga, dias, horário e intervalo de re-alerta. Na mensagem
+            diária, os dias e o horário são o agendamento do envio.
+          </small>
         </p>
         {TYPE_ORDER.map((type) => (
           <AlertPrefSection key={type} pref={prefs[type]} onChange={(p) => setPrefs((cur) => ({ ...cur, [type]: p }))} />
