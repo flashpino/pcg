@@ -1,5 +1,5 @@
 {
-  "name": "pcg-server",
+  "name": "proatus-server",
   "private": true,
   "type": "module",
   "scripts": {

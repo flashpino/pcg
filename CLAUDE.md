@@ -1,4 +1,4 @@
-# pcg
+# proatus
 
 ## Firmware (ESP32 CYD)
 

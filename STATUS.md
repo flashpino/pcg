@@ -1,4 +1,4 @@
-# STATUS — Sistema de Monitoramento PCG
+# STATUS — Sistema de Monitoramento Proatus
 
 **Plano**: `.claude/PRPs/plans/iot-monitoramento-temperatura.plan.md`
 **Protocolo**: 1 task = 1 sessão. Leia o plano (seção "Protocolo de Sessão") antes de tudo.

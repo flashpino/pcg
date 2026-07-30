@@ -21,8 +21,8 @@ export function ClientLoginPage({ onLoggedIn }: { onLoggedIn: () => void }) {
     <main className="login-shell">
       <div className="login-card">
         <div className="login-card-header">
-          <span className="material-symbols-outlined">bolt</span>
-          <p>PCG — Portal do Cliente</p>
+          <img src="/logo.png" alt="Proatus" className="brand-logo" />
+          <p>Proatus — Portal do Cliente</p>
         </div>
         <div className="login-card-body">
           <h2>Acesso do Cliente</h2>
@@ -60,7 +60,7 @@ export function ClientLoginPage({ onLoggedIn }: { onLoggedIn: () => void }) {
             </button>
           </form>
         </div>
-        <div className="login-card-footer">PCG — Portal do Cliente</div>
+        <div className="login-card-footer">Proatus — Portal do Cliente</div>
       </div>
     </main>
   );

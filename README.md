@@ -1,4 +1,4 @@
-# PCG — Monitoramento de Temperatura/Umidade
+# Proatus — Monitoramento de Temperatura/Umidade
 
 Sistema multi-cliente: ESP32-2432S028 (CYD) + DHT22 → backend Node/TypeScript → InfluxDB (existente), com painel React, alertas por WhatsApp (Evolution API) e ligação (Twilio), e OTA remoto.
 
@@ -22,7 +22,7 @@ firmware/  PlatformIO — ESP32 CYD + DHT22 (build/upload/variantes de tela: fir
 Pré-requisitos: Docker + Docker Compose, e um InfluxDB já rodando (não é provisionado por este projeto).
 
 ```bash
-git clone <repo> pcg && cd pcg
+git clone <repo> proatus && cd proatus
 cp .env.example .env   # preencher todas as variáveis (ver seção Envs abaixo)
 docker compose up -d
 curl localhost:3000/health   # {"db":"ok","influx":"ok","evolution":"..."}

@@ -108,7 +108,7 @@ export async function contactsRoutes(app: FastifyInstance): Promise<void> {
           local: sensor.local ?? '',
           temperatura: latest?.temperature ?? '',
         })
-      : (process.env.WELCOME_TEMPLATE ?? 'Olá %name%! Você foi cadastrado no monitoramento PCG.').replace('%name%', contact.name);
+      : (process.env.WELCOME_TEMPLATE ?? 'Olá %name%! Você foi cadastrado no monitoramento Proatus.').replace('%name%', contact.name);
     const notification = await createNotification(alert.id, contact.id, 'whatsapp', 'queued', 'welcome');
     await enqueueWhatsapp({ notificationId: notification.id, phone: contact.phone, text });
     return { ok: true };

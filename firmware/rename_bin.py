@@ -1,5 +1,5 @@
 # Pós-build do PlatformIO: copia o firmware.bin de cada environment para dist/
-# com nome autoexplicativo (pcg-<versão>-<env>.bin), pra não confundir os dois
+# com nome autoexplicativo (proatus-<versão>-<env>.bin), pra não confundir os dois
 # binários na hora de cadastrar OTA no painel.
 import os
 import re
@@ -17,7 +17,7 @@ def after_build(source, target, env):
             version = m.group(1)
     dist = os.path.join(proj, "dist")
     os.makedirs(dist, exist_ok=True)
-    dst = os.path.join(dist, f"pcg-{version}-{env['PIOENV']}.bin")
+    dst = os.path.join(dist, f"proatus-{version}-{env['PIOENV']}.bin")
     shutil.copy(str(target[0]), dst)
     print(f"Binario copiado para: {dst}")
 

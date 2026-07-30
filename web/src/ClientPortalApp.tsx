@@ -26,7 +26,10 @@ export function ClientPortalApp() {
   return (
     <>
       <header className="topbar">
-        <strong>PCG — Portal do Cliente</strong>
+        <span className="brand-group">
+          <img src="/logo.png" alt="Proatus" className="brand-logo" />
+          <strong>Portal do Cliente</strong>
+        </span>
         <span>
           {name} — <button className="secondary" onClick={logout}>sair</button>
         </span>

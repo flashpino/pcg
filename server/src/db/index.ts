@@ -49,11 +49,11 @@ const DEFAULT_MESSAGE_TEMPLATES: Record<string, { whatsapp: string; voice?: stri
   firmware_update: {
     whatsapp: '✅ Sensor {{$sensor}} ({{$cliente}} / {{$local}}) atualizou o firmware: {{$de}} → {{$para}}.',
   },
-  welcome: { whatsapp: 'Olá {{$nome}}! Você foi cadastrado no monitoramento PCG.' },
+  welcome: { whatsapp: 'Olá {{$nome}}! Você foi cadastrado no monitoramento Proatus.' },
   // Voz igual à de temperature_fire — o teste manual (botão "Testar canal") precisa validar a
   // ligação de voz do contato do mesmo jeito que o alerta real faz, não só o WhatsApp.
   test: {
-    whatsapp: 'Teste PCG — {{$sensor}} ({{$local}}): temperatura atual {{$temperatura}}°C ({{$quando}}).',
+    whatsapp: 'Teste Proatus — {{$sensor}} ({{$local}}): temperatura atual {{$temperatura}}°C ({{$quando}}).',
     voice: 'Atenção. Este é um teste do sistema de monitoramento de {{$local}}. Não é uma emergência.',
   },
   // Enviado por WhatsApp antes de qualquer teste (sensor ou contato) — avisa quem está inscrito

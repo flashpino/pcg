@@ -48,8 +48,8 @@ export function App() {
       <header className="topbar">
         <div className="topbar-left">
           <h1 className="brand">
-            <span className="material-symbols-outlined" style={{ color: 'var(--primary)', marginRight: '0.4rem' }}>bolt</span>
-            PCG — Monitoramento
+            <img src="/logo.png" alt="Proatus" className="brand-logo" />
+            Monitoramento
           </h1>
           <nav className="tabs">
             {TABS.map((t) => (
@@ -83,7 +83,7 @@ export function App() {
       <Active />
       <footer className="app-footer">
         <div>
-          <span>© {new Date().getFullYear()} PCG</span>
+          <span>© {new Date().getFullYear()} Proatus</span>
           <span>Painel de Monitoramento</span>
         </div>
       </footer>
