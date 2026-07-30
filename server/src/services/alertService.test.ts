@@ -480,6 +480,23 @@ describe('sendTest', () => {
 
     expect(enqueueWhatsapp).not.toHaveBeenCalled();
   });
+
+  // Relato de campo: o aviso "vai ser executado um teste" e a ligação saíam no mesmo instante —
+  // o telefone tocava antes de a pessoa ter lido o WhatsApp, que é justamente o que o aviso
+  // deveria evitar. O aviso sai na hora; o teste em si só 2 minutos depois.
+  it('aguarda 2 minutos entre o aviso e o teste (WhatsApp e ligação)', async () => {
+    vi.mocked(queries.listContacts).mockResolvedValue([contatoAtivo]);
+    vi.mocked(queries.listContactAlertPrefsByClient).mockResolvedValue([prefLiberada('test')]);
+    vi.mocked(queries.createNotification).mockResolvedValue({ id: 3 } as never);
+    vi.mocked(queries.getMessageTemplate).mockResolvedValue({ whatsapp: 'oi', voice: 'alô' } as never);
+
+    await sendTest(sensor);
+
+    const [aviso, teste] = vi.mocked(enqueueWhatsapp).mock.calls;
+    expect(aviso[1] ?? 0).toBe(0); // aviso imediato
+    expect(teste[1]).toBe(120);
+    expect(enqueueVoice).toHaveBeenCalledWith(expect.anything(), 120);
+  });
 });
 
 describe('sendContactTest', () => {
@@ -514,7 +531,20 @@ describe('sendContactTest', () => {
     await sendContactTest(contatoAtivo);
 
     expect(enqueueWhatsapp).toHaveBeenCalledTimes(2); // aviso + teste
-    expect(enqueueWhatsapp).toHaveBeenCalledWith(expect.objectContaining({ phone: '+5511999999999' }));
+    expect(enqueueWhatsapp).toHaveBeenCalledWith(expect.objectContaining({ phone: '+5511999999999' }), expect.anything());
+  });
+
+  // Mesmo intervalo do teste por sensor: o botão "Testar canal" também precisa dar tempo de ler.
+  it('aguarda 2 minutos entre o aviso e o teste', async () => {
+    vi.mocked(queries.listSensors).mockResolvedValue([{ id: 7, name: 'Sensor A', local: null } as queries.Sensor]);
+    vi.mocked(queries.listContactAlertPrefsByClient).mockResolvedValue([prefLiberada('test')]);
+    vi.mocked(queries.createNotification).mockResolvedValue({ id: 4 } as never);
+
+    await sendContactTest(contatoAtivo);
+
+    const [aviso, teste] = vi.mocked(enqueueWhatsapp).mock.calls;
+    expect(aviso[1] ?? 0).toBe(0);
+    expect(teste[1]).toBe(120);
   });
 });
 
