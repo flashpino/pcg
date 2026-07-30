@@ -76,13 +76,13 @@ linhas `'daily'` que o bloco novo tinha criado no boot anterior. Não era proble
 migração deixando de ser idempotente.
 
 **Correção:** uma única definição da constraint, com a lista completa, antes dos `INSERT` de
-backfill (`e1c4a1f`). Tipo novo daqui pra frente = editar a lista existente, nunca acrescentar
+backfill (`e5d8949`). Tipo novo daqui pra frente = editar a lista existente, nunca acrescentar
 outro `ADD CONSTRAINT` com o mesmo nome.
 
 | Etapa | Commit | Comando | Resultado |
 |---|---|---|---|
 | RED | `8821634` | `npx vitest run src/db/schema.test.ts` | **2 failed** — constraint duplicada; a 1ª definição não contém `'daily'` |
-| GREEN | `e1c4a1f` | `npm test` | **112 passed** |
+| GREEN | `e5d8949` | `npm test` | **112 passed** |
 
 O guarda contra reincidência está em `src/db/schema.test.ts`: lê o SQL e falha se algum
 `ADD CONSTRAINT` aparecer duas vezes, ou se o schema inserir um tipo que a constraint em vigor não
