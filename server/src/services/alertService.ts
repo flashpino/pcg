@@ -121,6 +121,7 @@ async function notifyContacts(
   channels: Channel[],
   texts: RenderedTexts,
   kind: Kind,
+  delaySeconds = 0,
 ): Promise<void> {
   const now = new Date();
   for (const contact of contacts) {
@@ -159,8 +160,8 @@ async function notifyContacts(
       const text = channel === 'voice' ? texts.voice! : texts.whatsapp;
       const notification = await createNotification(alert.id, contact.id, channel, 'queued');
       const job = { notificationId: notification.id, phone: contact.phone, text };
-      if (channel === 'whatsapp') await enqueueWhatsapp(job);
-      else await enqueueVoice(job);
+      if (channel === 'whatsapp') await enqueueWhatsapp(job, delaySeconds);
+      else await enqueueVoice(job, delaySeconds);
     }
   }
 }
@@ -414,6 +415,10 @@ async function warnBeforeTest(alert: Alert, contacts: Contact[], prefs: ContactA
   await notifyContacts(alert, contacts, prefs, 'test', ['whatsapp'], warningTexts, 'fire');
 }
 
+// Respiro entre o aviso e o teste em si. Sem ele o telefone tocava junto com o WhatsApp de aviso,
+// e o aviso não cumpria a única função que tem: dar tempo de a pessoa saber que é só um teste.
+const TEST_DELAY_SECONDS = 120;
+
 // Teste de dispositivo: mesma mensagem disparada pelo botão do painel, pelo device (ESP32) e
 // pelo agendamento automático. Usa a pref dedicada 'test' de cada contato (liga/desliga, dias,
 // janela) via notifyContacts — o texto vem do template 'test', não da chave do tipo. Inclui voz
@@ -442,7 +447,7 @@ export async function sendTest(sensor: Sensor): Promise<void> {
   const contacts = await listContacts(sensor.client_id);
   const prefs = await listContactAlertPrefsByClient(sensor.client_id);
   await warnBeforeTest(alert, contacts, prefs);
-  await notifyContacts(alert, contacts, prefs, 'test', ['whatsapp', 'voice'], texts, 'fire');
+  await notifyContacts(alert, contacts, prefs, 'test', ['whatsapp', 'voice'], texts, 'fire', TEST_DELAY_SECONDS);
 }
 
 // Rotina diária: "está tudo bem com a climatização". Diferente dos alertas, não nasce de um
@@ -495,5 +500,5 @@ export async function sendContactTest(contact: Contact): Promise<void> {
   const alert = await createResolvedAlert(sensor.id, 'test', texts.whatsapp);
   const prefs = await listContactAlertPrefsByClient(contact.client_id);
   await warnBeforeTest(alert, [contact], prefs);
-  await notifyContacts(alert, [contact], prefs, 'test', ['whatsapp', 'voice'], texts, 'fire');
+  await notifyContacts(alert, [contact], prefs, 'test', ['whatsapp', 'voice'], texts, 'fire', TEST_DELAY_SECONDS);
 }

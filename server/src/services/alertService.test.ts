@@ -579,7 +579,7 @@ describe('sendDailyReport', () => {
 
     expect(queries.createResolvedAlert).toHaveBeenCalledWith(7, 'daily', expect.any(String));
     expect(enqueueWhatsapp).toHaveBeenCalledTimes(1);
-    expect(enqueueWhatsapp).toHaveBeenCalledWith(expect.objectContaining({ phone: '+5511999999999' }));
+    expect(enqueueWhatsapp).toHaveBeenCalledWith(expect.objectContaining({ phone: '+5511999999999' }), 0); // sem atraso
   });
 
   it('{{$sensores}} lista cada sensor com a temperatura atual (local, ou nome quando sem local)', async () => {
@@ -686,6 +686,7 @@ describe('evaluate — por que a ligação de temperatura não saiu', () => {
 
     expect(enqueueWhatsapp).toHaveBeenCalledTimes(1);
     expect(enqueueVoice).toHaveBeenCalledTimes(1);
-    expect(enqueueVoice).toHaveBeenCalledWith(expect.objectContaining({ phone: '+5511999999999', text: 'alô' }));
+    // Alerta real liga na hora — o atraso de 2 min é exclusivo do teste, que tem aviso prévio.
+    expect(enqueueVoice).toHaveBeenCalledWith(expect.objectContaining({ phone: '+5511999999999', text: 'alô' }), 0);
   });
 });

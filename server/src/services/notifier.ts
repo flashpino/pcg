@@ -53,8 +53,13 @@ export interface NotifyJob {
   text: string;
 }
 
-export const enqueueWhatsapp = (job: NotifyJob) => getBoss().send(WHATSAPP_QUEUE, job, QUEUE_OPTS);
-export const enqueueVoice = (job: NotifyJob) => getBoss().send(VOICE_QUEUE, job, QUEUE_OPTS);
+// delaySeconds usa o startAfter do pg-boss (agendamento no banco), não um timer em memória: o
+// atraso sobrevive a restart/deploy do server, que é o que faz a ligação de teste sair mesmo
+// quando o container reinicia entre o aviso e o teste.
+export const enqueueWhatsapp = (job: NotifyJob, delaySeconds = 0) =>
+  getBoss().send(WHATSAPP_QUEUE, job, { ...QUEUE_OPTS, startAfter: delaySeconds });
+export const enqueueVoice = (job: NotifyJob, delaySeconds = 0) =>
+  getBoss().send(VOICE_QUEUE, job, { ...QUEUE_OPTS, startAfter: delaySeconds });
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
