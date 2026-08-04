@@ -142,7 +142,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS alerts_one_firing ON alerts (sensor_id, type) 
 CREATE TABLE IF NOT EXISTS notifications (
   id SERIAL PRIMARY KEY,
   alert_id INT NOT NULL REFERENCES alerts(id),
-  contact_id INT NOT NULL REFERENCES contacts(id),
+  contact_id INT REFERENCES contacts(id) ON DELETE SET NULL,
   channel TEXT NOT NULL,                   -- 'voice' | 'whatsapp'
   status TEXT NOT NULL DEFAULT 'queued',   -- queued|sent|failed|skipped_window|skipped_pref|skipped_channel|skipped_no_voice_text|skipped_no_admin|skipped_alert_firing
   detail TEXT,
@@ -152,6 +152,12 @@ CREATE TABLE IF NOT EXISTS notifications (
 -- de cliente — contact_id vira opcional e admin_id é o outro lado dessa notification.
 ALTER TABLE notifications ALTER COLUMN contact_id DROP NOT NULL;
 ALTER TABLE notifications ADD COLUMN IF NOT EXISTS admin_id INT REFERENCES users(id);
+-- Regressão de produção: excluir um contato com histórico de notificações (welcome/test/alerta)
+-- batia em "violates foreign key constraint notifications_contact_id_fkey" porque a FK não tinha
+-- ON DELETE. contact_id já é opcional (linha acima) — SET NULL mantém o histórico e libera o DELETE.
+ALTER TABLE notifications DROP CONSTRAINT IF EXISTS notifications_contact_id_fkey;
+ALTER TABLE notifications ADD CONSTRAINT notifications_contact_id_fkey
+  FOREIGN KEY (contact_id) REFERENCES contacts(id) ON DELETE SET NULL;
 
 CREATE TABLE IF NOT EXISTS firmware (
   id SERIAL PRIMARY KEY,
