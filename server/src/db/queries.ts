@@ -411,6 +411,20 @@ export const getLastNotification = (alertId: number, contactId: number, channel:
     )
     .then((r) => r.rows[0]);
 
+// Última diária efetivamente tentada (não skipped_*) pra este contato+sensor — cada chamada de
+// sendDailyReport cria um alerta 'daily' novo, então getLastNotification (por alert_id) não serve
+// aqui; o histórico precisa atravessar todos os alertas 'daily' do sensor via join.
+export const getLastDailyNotification = (contactId: number, sensorId: number) =>
+  pool
+    .query<Notification>(
+      `SELECT n.* FROM notifications n JOIN alerts a ON a.id = n.alert_id
+       WHERE a.type = 'daily' AND a.sensor_id = $1 AND n.contact_id = $2
+         AND n.status NOT LIKE 'skipped_%'
+       ORDER BY n.created_at DESC LIMIT 1`,
+      [sensorId, contactId],
+    )
+    .then((r) => r.rows[0]);
+
 export interface AlertWithNotifications extends Alert {
   notifications: Notification[];
 }

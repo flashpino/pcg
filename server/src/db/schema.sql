@@ -144,7 +144,7 @@ CREATE TABLE IF NOT EXISTS notifications (
   alert_id INT NOT NULL REFERENCES alerts(id),
   contact_id INT REFERENCES contacts(id) ON DELETE SET NULL,
   channel TEXT NOT NULL,                   -- 'voice' | 'whatsapp'
-  status TEXT NOT NULL DEFAULT 'queued',   -- queued|sent|failed|skipped_window|skipped_pref|skipped_channel|skipped_no_voice_text|skipped_no_admin|skipped_alert_firing
+  status TEXT NOT NULL DEFAULT 'queued',   -- queued|sent|failed|skipped_window|skipped_pref|skipped_channel|skipped_no_voice_text|skipped_no_admin|skipped_alert_firing|skipped_already_sent
   detail TEXT,
   created_at TIMESTAMPTZ DEFAULT now()
 );

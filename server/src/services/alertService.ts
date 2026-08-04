@@ -5,6 +5,7 @@ import {
   createResolvedAlert,
   getClient,
   getFiringAlert,
+  getLastDailyNotification,
   getLastNotification,
   getMessageTemplate,
   listAdminsWithPhone,
@@ -21,7 +22,7 @@ import {
 import { queryLatestReadings } from './influx.js';
 import { renderTemplate } from './messageTemplates.js';
 import { enqueueVoice, enqueueWhatsapp } from './notifier.js';
-import { isWithinWindow } from './scheduleWindow.js';
+import { alreadySentToday, isWithinWindow } from './scheduleWindow.js';
 
 const HYSTERESIS = 0.5;
 
@@ -489,6 +490,16 @@ export async function sendDailyReport(contact: Contact, sensor: Sensor): Promise
   // Sem estado firing real (igual 'test'/'reboot') — o alerta resolvido é o pendurador da
   // notification, e é o que deixa a diária auditável no painel de Alertas.
   const alert = await createResolvedAlert(sensor.id, 'daily', texts.whatsapp);
+
+  // Regressão de campo: a diária saía mais de uma vez no mesmo dia (retry do worker do pg-boss,
+  // restart no mesmo minuto etc.) — isDailySendTime (notifier.ts) só garante o minuto exato do
+  // tick, não o dia inteiro. Cada chamada cria um alerta 'daily' novo, então o histórico precisa
+  // atravessar todos eles (getLastDailyNotification), não só o alerta desta chamada.
+  const lastDaily = await getLastDailyNotification(contact.id, sensor.id);
+  if (alreadySentToday(lastDaily ? new Date(lastDaily.created_at) : null, contact.timezone, new Date())) {
+    await createNotification(alert.id, contact.id, 'whatsapp', 'skipped_already_sent');
+    return;
+  }
 
   // Falsa tranquilização é pior que silêncio: com um alarme aberto NESTE sensor (fora do limite,
   // offline, DHT travado) a diária contradiria o alerta que o mesmo contato recebeu. Só este
