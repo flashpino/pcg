@@ -107,7 +107,7 @@ async function renderMessage(key: string, vars: Record<string, string | number |
   };
 }
 
-type Channel = 'whatsapp' | 'voice';
+export type Channel = 'whatsapp' | 'voice';
 type Kind = 'fire' | 'resolve' | 'renotify';
 
 // Ponto único de enfileiramento: aplica preferência do tipo + janela de horário (auditável via
@@ -436,7 +436,9 @@ const TEST_DELAY_SECONDS = 120;
 // pelo agendamento automático. Usa a pref dedicada 'test' de cada contato (liga/desliga, dias,
 // janela) via notifyContacts — o texto vem do template 'test', não da chave do tipo. Inclui voz
 // quando o template 'test' tem texto de voz configurado (mesmo critério de sendContactTest).
-export async function sendTest(sensor: Sensor): Promise<void> {
+// channels default é o teste manual (painel/device): whatsapp + voz. O agendamento automático
+// (runScheduledTests em notifier.ts) passa ['whatsapp'] — teste semanal não liga.
+export async function sendTest(sensor: Sensor, channels: Channel[] = ['whatsapp', 'voice']): Promise<void> {
   if (sensor.client_id === null) return; // sensor não reivindicado não tem contatos
 
   const latest = (await queryLatestReadings([sensor.id])).get(sensor.id);
@@ -460,7 +462,7 @@ export async function sendTest(sensor: Sensor): Promise<void> {
   const contacts = await listContacts(sensor.client_id);
   const prefs = await listContactAlertPrefsByClient(sensor.client_id);
   await warnBeforeTest(alert, contacts, prefs, vars);
-  await notifyContacts(alert, contacts, prefs, 'test', ['whatsapp', 'voice'], texts, 'fire', TEST_DELAY_SECONDS);
+  await notifyContacts(alert, contacts, prefs, 'test', channels, texts, 'fire', TEST_DELAY_SECONDS);
 }
 
 // Rotina diária: "está tudo bem com a climatização". Diferente dos alertas, não nasce de um
