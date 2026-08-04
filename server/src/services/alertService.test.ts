@@ -27,6 +27,7 @@ vi.mock('../db/queries.js', () => ({
   createResolvedAlert: vi.fn(async () => ({ id: 42 })),
   getClient: vi.fn(async () => ({ name: 'Cliente X' })),
   getFiringAlert: vi.fn(),
+  getLastDailyNotification: vi.fn(),
   getLastNotification: vi.fn(),
   getMessageTemplate: vi.fn(async () => ({ whatsapp: 'Sensor {{$sensor}}: {{$de}} -> {{$para}}', voice: null })),
   listAdminsWithPhone: vi.fn(async () => []),
@@ -701,6 +702,25 @@ describe('sendDailyReport', () => {
     await sendDailyReport({ ...contatoAtivo, active: false }, sensorA);
 
     expect(enqueueWhatsapp).not.toHaveBeenCalled();
+  });
+
+  // Relato de campo: a diária saía mais de uma vez no mesmo dia (retry do worker, restart no
+  // mesmo minuto etc.) — isDailySendTime só garante o minuto exato, não o dia inteiro.
+  it('já enviada hoje pra este contato+sensor grava skipped_already_sent e não reenvia', async () => {
+    vi.mocked(queries.getLastDailyNotification).mockResolvedValue({ created_at: new Date().toISOString() } as never);
+
+    await sendDailyReport(contatoAtivo, sensorA);
+
+    expect(queries.createNotification).toHaveBeenCalledWith(42, 5, 'whatsapp', 'skipped_already_sent');
+    expect(enqueueWhatsapp).not.toHaveBeenCalled();
+  });
+
+  it('último envio foi em outro dia — manda normalmente', async () => {
+    vi.mocked(queries.getLastDailyNotification).mockResolvedValue({ created_at: '2000-01-01T00:00:00Z' } as never);
+
+    await sendDailyReport(contatoAtivo, sensorA);
+
+    expect(enqueueWhatsapp).toHaveBeenCalledTimes(1);
   });
 });
 
