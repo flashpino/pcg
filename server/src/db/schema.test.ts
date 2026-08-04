@@ -23,4 +23,12 @@ describe('schema.sql', () => {
     expect(inseridos.length).toBeGreaterThan(0);
     for (const tipo of inseridos) expect(check).toContain(`'${tipo}'`);
   });
+
+  // Regressão de produção: DELETE /api/contacts/:id devolvia 500 porque notifications.contact_id
+  // referenciava contacts sem ON DELETE, e todo contato acumula histórico de notificações
+  // (welcome/test/alertas) antes de alguém tentar excluí-lo. contact_id já é nullable (admin_id
+  // cobre o caso sem contato), então SET NULL preserva o histórico sem travar a exclusão.
+  it('notifications.contact_id permite excluir o contato sem violar FK', () => {
+    expect(sql).toMatch(/contact_id\s+INT\s+REFERENCES\s+contacts\(id\)\s+ON\s+DELETE\s+SET\s+NULL/i);
+  });
 });
