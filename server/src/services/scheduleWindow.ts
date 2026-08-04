@@ -54,3 +54,16 @@ export function isDailySendTime(
   const { day, minutes } = localParts(timezone, now);
   return pref.days_of_week.includes(day) && minutes === toMinutes(pref.window_start);
 }
+
+// Cinto de segurança contra duplicata: isDailySendTime só olha o minuto exato, então um retry do
+// pg-boss ou um segundo worker rodando o mesmo tick mandam a diária de novo dentro do mesmo
+// minuto. Dedup por DIA CIVIL no fuso do contato (não por instante) — resiste a isso mesmo que o
+// guard de minuto falhe.
+function localDateKey(timezone: string, date: Date): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: timezone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(date);
+}
+
+export function alreadySentToday(lastSentAt: Date | null, timezone: string, now: Date): boolean {
+  if (!lastSentAt) return false;
+  return localDateKey(timezone, lastSentAt) === localDateKey(timezone, now);
+}
