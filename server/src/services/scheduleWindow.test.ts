@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isDailySendTime, isWithinWindow } from './scheduleWindow.js';
+import { alreadySentToday, isDailySendTime, isWithinWindow } from './scheduleWindow.js';
 
 const base = {
   days_of_week: [1, 2, 3, 4, 5], // seg-sex
@@ -87,5 +87,34 @@ describe('isDailySendTime', () => {
 
   it('sem horário configurado nunca dispara (diferente de janela nula, que libera geral)', () => {
     expect(isDailySendTime({ ...diaria, window_start: null }, 'America/Sao_Paulo', new Date('2026-01-05T11:00:00Z'))).toBe(false);
+  });
+});
+
+// Regressão de campo: a diária saía 2x no mesmo dia (retry do pg-boss, restart do worker no
+// mesmo minuto etc.) porque o único guard era o minuto exato de isDailySendTime — nada impedia
+// um segundo disparo dentro daquele minuto. alreadySentToday é o cinto de segurança: dedup por
+// dia civil no fuso do contato, não por instante.
+describe('alreadySentToday', () => {
+  it('sem envio anterior, nunca foi enviada hoje', () => {
+    expect(alreadySentToday(null, 'America/Sao_Paulo', new Date('2026-01-05T11:00:00Z'))).toBe(false);
+  });
+
+  it('mesmo dia civil (SP) já enviada, mesmo com horas de diferença', () => {
+    const last = new Date('2026-01-05T11:00:00Z'); // seg 08:00 SP
+    const now = new Date('2026-01-05T23:00:00Z'); // seg 20:00 SP
+    expect(alreadySentToday(last, 'America/Sao_Paulo', now)).toBe(true);
+  });
+
+  it('dia civil seguinte (SP) libera novo envio', () => {
+    const last = new Date('2026-01-05T11:00:00Z'); // seg 08:00 SP
+    const now = new Date('2026-01-06T11:00:00Z'); // ter 08:00 SP
+    expect(alreadySentToday(last, 'America/Sao_Paulo', now)).toBe(false);
+  });
+
+  it('usa o fuso do contato, não UTC: a mesma dupla (last, now) cruza a virada em um fuso e não no outro', () => {
+    const last = new Date('2026-01-05T09:00:00Z');
+    const now = new Date('2026-01-05T11:00:00Z');
+    expect(alreadySentToday(last, 'America/Sao_Paulo', now)).toBe(true); // SP: 05/jan 06h -> 05/jan 08h, mesmo dia
+    expect(alreadySentToday(last, 'Pacific/Kiritimati', now)).toBe(false); // Kiritimati: 05/jan 23h -> 06/jan 01h, virou o dia
   });
 });
