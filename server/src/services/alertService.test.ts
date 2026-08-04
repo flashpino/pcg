@@ -529,6 +529,20 @@ describe('sendTest', () => {
     expect(teste[1]).toBe(120);
     expect(enqueueVoice).toHaveBeenCalledWith(expect.anything(), 120);
   });
+
+  // Pedido: teste manual (botão do painel/device) liga E manda WhatsApp; o teste semanal
+  // automático (runScheduledTests em notifier.ts) deve mandar só WhatsApp, sem ligar.
+  it('teste semanal automático (canais=[whatsapp]) não liga mesmo com texto de voz no template', async () => {
+    vi.mocked(queries.listContacts).mockResolvedValue([contatoAtivo]);
+    vi.mocked(queries.listContactAlertPrefsByClient).mockResolvedValue([prefLiberada('test')]);
+    vi.mocked(queries.createNotification).mockResolvedValue({ id: 3 } as never);
+    vi.mocked(queries.getMessageTemplate).mockResolvedValue({ whatsapp: 'oi', voice: 'alô' } as never);
+
+    await sendTest(sensor, ['whatsapp']);
+
+    expect(enqueueVoice).not.toHaveBeenCalled();
+    expect(enqueueWhatsapp).toHaveBeenCalledTimes(2); // aviso + teste
+  });
 });
 
 describe('sendContactTest', () => {
