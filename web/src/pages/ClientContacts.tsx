@@ -78,18 +78,41 @@ function AlertPrefSection({ pref, onChange }: { pref: AlertPref; onChange: (pref
             ))}
           </div>
           {pref.alert_type === 'daily' ? (
-            <div className="inline">
-              <label>
-                horário do envio{' '}
-                <input
-                  type="time"
-                  required
-                  value={hhmm(pref.window_start)}
-                  onChange={(e) => onChange({ ...pref, window_start: e.target.value || null })}
-                />
-              </label>
-              <small>Enviada nos dias marcados, só se nenhum alerta estiver disparado.</small>
-            </div>
+            <>
+              <div className="inline">
+                <label>
+                  1º envio{' '}
+                  <input
+                    type="time"
+                    required
+                    value={hhmm(pref.window_start)}
+                    onChange={(e) => onChange({ ...pref, window_start: e.target.value || null })}
+                  />
+                </label>
+                <label>
+                  repetir a cada (min){' '}
+                  <input
+                    type="number"
+                    min={0}
+                    style={{ width: '4rem' }}
+                    value={pref.renotify_minutes}
+                    onChange={(e) => onChange({ ...pref, renotify_minutes: Number(e.target.value) })}
+                  />
+                </label>
+                <label>
+                  repetir até{' '}
+                  <input
+                    type="time"
+                    value={hhmm(pref.window_end)}
+                    onChange={(e) => onChange({ ...pref, window_end: e.target.value || null })}
+                  />
+                </label>
+              </div>
+              <small>
+                Repetir a cada <strong>0</strong> = uma vez por dia. Sem "repetir até", repete até o fim do dia.
+                Enviada nos dias marcados, e só nos sensores sem alerta disparado.
+              </small>
+            </>
           ) : (
             <div className="inline">
               <label>

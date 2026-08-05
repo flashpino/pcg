@@ -491,12 +491,22 @@ export async function sendDailyReport(contact: Contact, sensor: Sensor): Promise
   // notification, e é o que deixa a diária auditável no painel de Alertas.
   const alert = await createResolvedAlert(sensor.id, 'daily', texts.whatsapp);
 
+  const prefs = await listContactAlertPrefsByClient(contact.client_id);
+  const intervalo = prefs.find((p) => p.contact_id === contact.id && p.alert_type === 'daily')?.renotify_minutes ?? 0;
+
   // Regressão de campo: a diária saía mais de uma vez no mesmo dia (retry do worker do pg-boss,
-  // restart no mesmo minuto etc.) — isDailySendTime (notifier.ts) só garante o minuto exato do
-  // tick, não o dia inteiro. Cada chamada cria um alerta 'daily' novo, então o histórico precisa
-  // atravessar todos eles (getLastDailyNotification), não só o alerta desta chamada.
+  // restart no mesmo minuto etc.) — isDailySendTime (notifier.ts) só garante o minuto do tick, e
+  // um tick pode ser executado duas vezes. Cada chamada cria um alerta 'daily' novo, então o
+  // histórico precisa atravessar todos eles (getLastDailyNotification), não só o desta chamada.
+  //
+  // Com intervalo configurado o guard vira "já mandei há menos de N minutos" — o de dia civil
+  // cancelaria a repetição que o usuário acabou de pedir. Sem intervalo (0), segue uma vez por dia.
   const lastDaily = await getLastDailyNotification(contact.id, sensor.id);
-  if (alreadySentToday(lastDaily ? new Date(lastDaily.created_at) : null, contact.timezone, new Date())) {
+  const lastSentAt = lastDaily ? new Date(lastDaily.created_at) : null;
+  const now = new Date();
+  const cedoDemais =
+    intervalo > 0 ? !shouldRenotify(lastSentAt, intervalo, now) : alreadySentToday(lastSentAt, contact.timezone, now);
+  if (cedoDemais) {
     await createNotification(alert.id, contact.id, 'whatsapp', 'skipped_already_sent');
     return;
   }
@@ -511,7 +521,6 @@ export async function sendDailyReport(contact: Contact, sensor: Sensor): Promise
     return;
   }
 
-  const prefs = await listContactAlertPrefsByClient(contact.client_id);
   await notifyContacts(alert, [contact], prefs, 'daily', ['whatsapp'], texts, 'fire');
 }
 

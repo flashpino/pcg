@@ -42,17 +42,35 @@ export function isWithinWindow(pref: WindowLike, now: Date): boolean {
   return start <= end ? minutes >= start && minutes < end : minutes >= start || minutes < end;
 }
 
-// Mensagem diária: window_start é reusado como HORÁRIO DO ENVIO, não como início de janela — o
-// tick roda a cada minuto e só o minuto exato dispara (um envio por dia, sem repetir). Por isso
-// horário vazio aqui significa "não envia", o oposto de isWithinWindow (onde vazio libera geral).
+const FIM_DO_DIA = 24 * 60 - 1; // 23:59
+
+// Mensagem diária: window_start é o HORÁRIO DO PRIMEIRO ENVIO, não o início de uma janela de
+// permissão. Por isso horário vazio aqui significa "não envia", o oposto de isWithinWindow (onde
+// vazio libera geral).
+//
+// renotify_minutes é o intervalo de repetição, no mesmo campo que os outros alertas usam pra
+// re-alerta: 0 = uma vez por dia (no minuto exato); > 0 = repete de N em N minutos a partir do
+// horário inicial, até window_end (vazio = até o fim do dia).
 export function isDailySendTime(
-  pref: { days_of_week: number[]; window_start: string | null },
+  pref: { days_of_week: number[]; window_start: string | null; window_end?: string | null; renotify_minutes?: number },
   timezone: string,
   now: Date,
 ): boolean {
   if (pref.window_start === null) return false;
   const { day, minutes } = localParts(timezone, now);
-  return pref.days_of_week.includes(day) && minutes === toMinutes(pref.window_start);
+  if (!pref.days_of_week.includes(day)) return false;
+
+  const start = toMinutes(pref.window_start);
+  const intervalo = pref.renotify_minutes ?? 0;
+  if (intervalo <= 0) return minutes === start;
+
+  // Janela que cruza a meia-noite (fim < início) não repete: a aritmética de repetição precisaria
+  // atravessar o dia civil, e aí o dia da semana marcado deixaria de bater com o dia do envio.
+  const end = pref.window_end == null ? FIM_DO_DIA : toMinutes(pref.window_end);
+  if (end < start) return minutes === start;
+
+  if (minutes < start || minutes > end) return false;
+  return (minutes - start) % intervalo === 0;
 }
 
 // Cinto de segurança contra duplicata: isDailySendTime só olha o minuto exato, então um retry do

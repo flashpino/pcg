@@ -95,9 +95,10 @@ INSERT INTO contact_alert_prefs (contact_id, alert_type, enabled, days_of_week, 
 -- a lista abaixo, nunca acrescentar outro ADD CONSTRAINT.
 --   'test'  = pref dedicada do botão "Testar canal" (cadastro do contato) e do teste agendado do
 --             sensor — antes o botão ignorava liga/desliga e janela de horário por completo.
---   'daily' = mensagem diária de "está tudo bem com a climatização". Aqui window_start é o HORÁRIO
---             DO ENVIO (não o início de uma janela) e window_end/renotify_minutes não são usados —
---             ver isDailySendTime em services/scheduleWindow.ts.
+--   'daily' = mensagem diária de "está tudo bem com a climatização", uma por sensor. Aqui
+--             window_start é o horário do PRIMEIRO envio (não o início de uma janela de
+--             permissão), renotify_minutes é o intervalo de repetição no dia (0 = uma vez só) e
+--             window_end é até quando repetir — ver isDailySendTime em services/scheduleWindow.ts.
 -- NOT VALID: a constraint vale pra toda escrita nova, mas o Postgres não varre as linhas que já
 -- estão lá. Sem isso, UMA linha legada com tipo desconhecido derruba o migrate() e o servidor
 -- inteiro não sobe — e o app não sobe justamente pra deixar alguém consertar a linha. Linha de
