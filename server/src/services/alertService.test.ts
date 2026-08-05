@@ -722,6 +722,40 @@ describe('sendDailyReport', () => {
 
     expect(enqueueWhatsapp).toHaveBeenCalledTimes(1);
   });
+
+  // Pedido do usuário: com intervalo configurado a diária repete no mesmo dia. O guard de dia
+  // civil passa a valer só pro intervalo 0 (uma vez por dia), senão ele cancelaria a repetição.
+  it('com intervalo configurado, reenvia no mesmo dia depois de passado o intervalo', async () => {
+    vi.mocked(queries.listContactAlertPrefsByClient).mockResolvedValue([prefLiberada('daily', 60)]);
+    const ha90min = new Date(Date.now() - 90 * 60_000).toISOString();
+    vi.mocked(queries.getLastDailyNotification).mockResolvedValue({ created_at: ha90min } as never);
+
+    await sendDailyReport(contatoAtivo, sensorA);
+
+    expect(enqueueWhatsapp).toHaveBeenCalledTimes(1);
+  });
+
+  it('com intervalo configurado, ainda segura o reenvio antes de passado o intervalo', async () => {
+    vi.mocked(queries.listContactAlertPrefsByClient).mockResolvedValue([prefLiberada('daily', 60)]);
+    const ha10min = new Date(Date.now() - 10 * 60_000).toISOString();
+    vi.mocked(queries.getLastDailyNotification).mockResolvedValue({ created_at: ha10min } as never);
+
+    await sendDailyReport(contatoAtivo, sensorA);
+
+    expect(queries.createNotification).toHaveBeenCalledWith(42, 5, 'whatsapp', 'skipped_already_sent');
+    expect(enqueueWhatsapp).not.toHaveBeenCalled();
+  });
+
+  it('com intervalo 0, uma vez por dia continua valendo mesmo horas depois', async () => {
+    vi.mocked(queries.listContactAlertPrefsByClient).mockResolvedValue([prefLiberada('daily', 0)]);
+    const ha5h = new Date(Date.now() - 5 * 3600_000).toISOString();
+    vi.mocked(queries.getLastDailyNotification).mockResolvedValue({ created_at: ha5h } as never);
+
+    await sendDailyReport(contatoAtivo, sensorA);
+
+    expect(queries.createNotification).toHaveBeenCalledWith(42, 5, 'whatsapp', 'skipped_already_sent');
+    expect(enqueueWhatsapp).not.toHaveBeenCalled();
+  });
 });
 
 // Relato de campo: "o sensor proatus_F794 tem um alerta disparado de temperatura mas não fez a

@@ -88,6 +88,49 @@ describe('isDailySendTime', () => {
   it('sem horário configurado nunca dispara (diferente de janela nula, que libera geral)', () => {
     expect(isDailySendTime({ ...diaria, window_start: null }, 'America/Sao_Paulo', new Date('2026-01-05T11:00:00Z'))).toBe(false);
   });
+
+  // Pedido do usuário: "a mensagem diária pode ser enviada mais de uma vez no dia, então ela deve
+  // ter a opção do intervalo igual aos outros alertas". renotify_minutes vira o intervalo de
+  // repetição; 0 continua sendo uma vez por dia, que é o comportamento já em produção.
+  describe('com intervalo de repetição', () => {
+    // seg 2026-01-05, SP = UTC-3: 08:00 SP = 11:00 UTC
+    const sp = (hhmmUtc: string) => new Date(`2026-01-05T${hhmmUtc}:00Z`);
+    const cada60 = { ...diaria, window_end: '18:00', renotify_minutes: 60 };
+
+    it('repete a cada intervalo a partir do horário inicial', () => {
+      expect(isDailySendTime(cada60, 'America/Sao_Paulo', sp('11:00'))).toBe(true); // 08:00
+      expect(isDailySendTime(cada60, 'America/Sao_Paulo', sp('12:00'))).toBe(true); // 09:00
+      expect(isDailySendTime(cada60, 'America/Sao_Paulo', sp('21:00'))).toBe(true); // 18:00, fim da janela
+    });
+
+    it('não dispara nos minutos entre uma repetição e outra', () => {
+      expect(isDailySendTime(cada60, 'America/Sao_Paulo', sp('11:30'))).toBe(false); // 08:30
+      expect(isDailySendTime(cada60, 'America/Sao_Paulo', sp('11:59'))).toBe(false); // 08:59
+    });
+
+    it('para de repetir depois do fim da janela', () => {
+      expect(isDailySendTime(cada60, 'America/Sao_Paulo', sp('22:00'))).toBe(false); // 19:00
+    });
+
+    it('não dispara antes do horário inicial', () => {
+      expect(isDailySendTime(cada60, 'America/Sao_Paulo', sp('10:00'))).toBe(false); // 07:00
+    });
+
+    it('sem horário final, repete até o fim do dia', () => {
+      const semFim = { ...cada60, window_end: null };
+      expect(isDailySendTime(semFim, 'America/Sao_Paulo', new Date('2026-01-06T02:00:00Z'))).toBe(true); // 23:00 seg
+    });
+
+    it('intervalo 0 continua sendo uma vez por dia, no minuto exato', () => {
+      const umaVez = { ...cada60, renotify_minutes: 0 };
+      expect(isDailySendTime(umaVez, 'America/Sao_Paulo', sp('11:00'))).toBe(true);
+      expect(isDailySendTime(umaVez, 'America/Sao_Paulo', sp('12:00'))).toBe(false);
+    });
+
+    it('dia fora de days_of_week não repete, mesmo dentro da janela', () => {
+      expect(isDailySendTime(cada60, 'America/Sao_Paulo', new Date('2026-01-10T12:00:00Z'))).toBe(false); // sábado
+    });
+  });
 });
 
 // Regressão de campo: a diária saía 2x no mesmo dia (retry do pg-boss, restart do worker no
