@@ -556,8 +556,16 @@ static void showWifiList() {
   // ESP-IDF não libera o rádio instantaneamente, e o scan volta WIFI_SCAN_FAILED (n=-2)
   // nesse instante. Retry curto dá tempo do rádio assentar sem travar a tela por muito tempo.
   net::pauseForScan(true);
+  // A task de rede só vê o pedido no próximo passo de 250ms do loop dela. Escanear antes
+  // disso pega o rádio no meio de um WiFi.begin(). Na bancada isso não aparecia porque lá o
+  // SSID salvo existe e ela fica parada em WL_CONNECTED; no cliente o SSID salvo não existe e
+  // ela vive em begin/backoff — é justamente lá que quem abre a tela de WiFi perde a corrida.
+  delay(400);
+  esp_task_wdt_reset();
+  // Retry em n <= 0, não só n < 0: rádio disputado às vezes devolve 0 redes em vez de
+  // WIFI_SCAN_FAILED, e aí a tela dizia "nenhuma rede encontrada" sem tentar de novo.
   int16_t n = WIFI_SCAN_FAILED;
-  for (int attempt = 0; attempt < 5 && n < 0; attempt++) {
+  for (int attempt = 0; attempt < 3 && n <= 0; attempt++) {
     esp_task_wdt_reset();
     if (attempt > 0) delay(300);
     n = WiFi.scanNetworks(false, true);

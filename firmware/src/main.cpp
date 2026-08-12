@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include <WiFi.h>
 #include <esp_task_wdt.h>
+#include <esp_wifi.h>
 #include "esp_bt.h"
 
 #include "net.h"
@@ -39,6 +40,14 @@ void setup() {
   // task de rede (roda em paralelo, no core 0) — não dá pra contar com ela já ter
   // rodado WiFi.begin() nesse ponto.
   WiFi.mode(WIFI_STA);
+
+  // O default do ESP-IDF é o país "01" (world-safe): canais 1-11 só. Roteador brasileiro
+  // em canal automático cai em 12/13 com frequência — o celular acha a rede, o device
+  // varre 1-11 e volta "nenhuma rede encontrada". ANATEL libera 1-13; MANUAL para não
+  // ser rebaixado de volta a 1-11 pelo beacon de outro AP.
+  wifi_country_t br = {.cc = "BR", .schan = 1, .nchan = 13, .max_tx_power = 78,
+                       .policy = WIFI_COUNTRY_POLICY_MANUAL};
+  esp_wifi_set_country(&br);
 
   net::begin(uiEventQueue);
 
