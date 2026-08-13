@@ -291,6 +291,16 @@ static IngestResult sendIngest(const Reading* batch, size_t count, bool sensorSt
   serializeJson(doc, body);
   int code = http.POST(body);
 
+  // 401 = o sensor foi deletado no painel (DELETE físico leva o device_token junto). O token
+  // gravado aqui nunca mais vai valer, e o servidor não tem como reemitir: o corpo do ingest
+  // não carrega o MAC, então ele nem sabe quem está batendo. Apagar o token é o que devolve o
+  // device pro caminho de provisionamento — sem isso ele fica em 401 pra sempre, reiniciando
+  // de 10 em 10 min, e só volta com USB (foi o que aconteceu com o proatus_C528).
+  if (code == 401) {
+    Serial.println("[ingest] 401 — token invalido, apagando pra reprovisionar");
+    storage::saveDeviceToken("");
+  }
+
   if (code == 200) {
     JsonDocument resp;
     if (deserializeJson(resp, http.getString()) == DeserializationError::Ok) {
@@ -345,7 +355,6 @@ static void task(void* pvParameters) {
   // "offset não sobrevive ao restart em sensor já configurado" (ver conversa/relato).
   Serial.printf("[offset] boot: temp_offset=%.2f\n", storage::loadTempOffset());
 
-  bool provisioned = storage::hasDeviceToken();
   uint32_t lastSendMs = 0;  // primeiro envio acontece ~60s depois do boot, igual antes
   uint32_t lastOkSendMs = millis();  // início "saudável" — só o 1º ciclo de envio real confirma
   uint8_t sensorFailStreak = 0;
@@ -385,11 +394,14 @@ static void task(void* pvParameters) {
       continue;
     }
 
-    if (!provisioned) {
+    // Relido da NVS a cada volta, nunca travado numa variável do boot: o sendIngest apaga o
+    // token ao tomar 401, e é esta releitura que faz o device voltar sozinho pro provisionamento
+    // no ciclo seguinte. Com o valor latcheado, deletar o sensor no painel deixava o device
+    // inalcançável até alguém ir lá com um cabo USB.
+    if (!storage::hasDeviceToken()) {
       String token;
       if (provision(token)) {
         storage::saveDeviceToken(token);
-        provisioned = true;
       } else {
         // MAC já cadastrado (404) → admin deleta o sensor no painel e ele reprovisiona.
         // Segue mostrando a leitura na tela — não some com temp/umidade por causa disso.
