@@ -576,7 +576,12 @@ static void showWifiList() {
 
   lv_obj_clean(wifiListWidget);
   if (n <= 0) {
-    lv_list_add_text(wifiListWidget, "nenhuma rede encontrada");
+    // O n bruto decide o diagnóstico em campo e antes só existia no serial: n=0 é scan que
+    // rodou e não ouviu nada (rádio surdo / faixa de canais), n=-2 é WIFI_SCAN_FAILED, o scan
+    // nem começou (disputa de rádio). Sem cabo USB no cliente, a tela é o único lugar de ler.
+    char diag[64];
+    snprintf(diag, sizeof(diag), "nenhuma rede (n=%d mode=%d st=%d)", n, WiFi.getMode(), WiFi.status());
+    lv_list_add_text(wifiListWidget, diag);
   } else {
     for (int16_t i = 0; i < n; i++) {
       lv_obj_t* btn = lv_list_add_btn(wifiListWidget, LV_SYMBOL_WIFI, WiFi.SSID(i).c_str());
