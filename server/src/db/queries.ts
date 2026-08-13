@@ -148,6 +148,7 @@ export const getSensor = (id: number) =>
 export interface SensorUpdate {
   client_id?: number | null;
   name?: string;
+  device_token?: string;
   temp_min?: number | null;
   temp_max?: number | null;
   temp_offset?: number;
