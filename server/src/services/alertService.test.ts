@@ -297,6 +297,15 @@ describe('evaluateHardware', () => {
   });
 });
 
+// O resolve de conectividade exige ONLINE_STREAK_TO_RESOLVE ingests NOVOS (last_seen_at avancando
+// a cada varredura) antes de fechar o alerta — um device que da um unico sinal de vida e some de
+// novo nao conta como "voltou". Cada teste usa um sensor.id proprio: o streak vive em memoria.
+const voltouAReportar = async (sensor: queries.Sensor, ingests = 3) => {
+  for (let i = 0; i < ingests; i++) {
+    await evaluateConnectivity({ ...sensor, last_seen_at: `2026-08-25T11:3${i}:00Z` } as queries.Sensor, false);
+  }
+};
+
 describe('evaluateConnectivity com defeito de hardware em curso', () => {
   beforeEach(() => vi.clearAllMocks());
 
@@ -313,7 +322,7 @@ describe('evaluateConnectivity com defeito de hardware em curso', () => {
     vi.mocked(queries.listContactAlertPrefsByClient).mockResolvedValue([]);
     vi.mocked(queries.listAdminsWithPhone).mockResolvedValue([]);
 
-    await evaluateConnectivity(sensor, false);
+    await voltouAReportar(sensor);
 
     expect(queries.resolveAlert).toHaveBeenCalledWith(70);
     expect(queries.getMessageTemplate).not.toHaveBeenCalledWith('connectivity_resolve');
@@ -328,9 +337,52 @@ describe('evaluateConnectivity com defeito de hardware em curso', () => {
     vi.mocked(queries.listContactAlertPrefsByClient).mockResolvedValue([]);
     vi.mocked(queries.listAdminsWithPhone).mockResolvedValue([]);
 
-    await evaluateConnectivity(sensor, false);
+    await voltouAReportar(sensor);
 
     expect(queries.getMessageTemplate).toHaveBeenCalledWith('connectivity_resolve');
+  });
+});
+
+describe('evaluateConnectivity — streak de resolve', () => {
+  // Regressao de campo (2026-08-25, proatus_F794): alerta aberto 11:31 e resolvido 11:33, com
+  // WhatsApp nos dois sentidos. O resolve saia no primeiro ingest que chegasse, sem nenhuma prova
+  // de que a conexao tinha estabilizado — o oposto do que o alerta de hardware ja fazia.
+  const sensorId = (id: number) =>
+    ({ id, name: 'proatus_F794', local: 'Sala 1', client_id: 1, offline_after_seconds: 300 }) as queries.Sensor;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(queries.getFiringAlert).mockImplementation(
+      async (_id, type) => (type === 'connectivity' ? ({ id: 90 } as queries.Alert) : (undefined as unknown as queries.Alert)),
+    );
+    vi.mocked(queries.listContacts).mockResolvedValue([]);
+    vi.mocked(queries.listContactAlertPrefsByClient).mockResolvedValue([]);
+    vi.mocked(queries.listAdminsWithPhone).mockResolvedValue([]);
+  });
+
+  it('nao resolve no primeiro ingest de volta', async () => {
+    await voltouAReportar(sensorId(33), 1);
+
+    expect(queries.resolveAlert).not.toHaveBeenCalled();
+  });
+
+  // O sweep roda a cada 60s, mas o sensor so volta a contar como offline quando
+  // offline_after_seconds vence. Entre uma coisa e outra o mesmo last_seen_at aparece varias
+  // vezes: contar VARREDURAS resolveria o alerta de um device que mandou um ingest e morreu.
+  it('varredura sem ingest novo nao conta pro streak', async () => {
+    const s = { ...sensorId(34), last_seen_at: '2026-08-25T11:32:00Z' } as queries.Sensor;
+
+    await evaluateConnectivity(s, false);
+    await evaluateConnectivity(s, false);
+    await evaluateConnectivity(s, false);
+
+    expect(queries.resolveAlert).not.toHaveBeenCalled();
+  });
+
+  it('resolve depois de 3 ingests novos', async () => {
+    await voltouAReportar(sensorId(35));
+
+    expect(queries.resolveAlert).toHaveBeenCalledWith(90);
   });
 });
 

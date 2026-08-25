@@ -374,12 +374,38 @@ export function connectivityVars(
   };
 }
 
+const ONLINE_STREAK_TO_RESOLVE = 3;
+
+// ponytail: em memoria, igual healthyStreak — restart do server zera a contagem e atrasa um
+// resolve em ate ~3 ingests (erra pro lado seguro). So vira coluna no banco se o server rodar
+// em mais de uma instancia, ai cada uma contaria o seu streak e nenhuma fecharia o alerta.
+const onlineStreak = new Map<number, { seen: string | null; n: number }>();
+
+// Um device instavel da um sinal de vida e some de novo; resolver no primeiro ingest fazia o
+// alerta abrir e fechar em poucos minutos, com WhatsApp nos dois sentidos. Mesma ideia do
+// healthyStreak do hardware, mas contando INGESTS NOVOS (last_seen_at avancou) e nao varreduras:
+// depois de um unico ingest o sweep enxerga o mesmo last_seen_at por varios ciclos, ate
+// offline_after_seconds vencer de novo — contar ciclos daria "voltou" pra um device ja mudo.
+function onlineStreakDone(sensor: Sensor): boolean {
+  const prev = onlineStreak.get(sensor.id);
+  if (prev && prev.seen === sensor.last_seen_at) return false; // nenhum ingest desde a varredura anterior
+  const n = (prev?.n ?? 0) + 1;
+  if (n < ONLINE_STREAK_TO_RESOLVE) {
+    onlineStreak.set(sensor.id, { seen: sensor.last_seen_at, n });
+    return false;
+  }
+  onlineStreak.delete(sensor.id);
+  return true;
+}
+
 // Chamado pelo connectivitySweep (Task 9) a cada varredura — `offline` já vem calculado a partir
 // de last_seen_at/offline_after_seconds. Sensor não reivindicado nunca chega aqui (sweep filtra).
 export async function evaluateConnectivity(sensor: Sensor, offline: boolean): Promise<void> {
   const firing = await getFiringAlert(sensor.id, 'connectivity');
   const transition = decideBinaryTransition(offline, Boolean(firing));
   if (transition === 'none') return;
+  if (transition === 'resolve' && !onlineStreakDone(sensor)) return;
+  if (transition !== 'resolve') onlineStreak.delete(sensor.id);
 
   const contacts = await listContacts(sensor.client_id!);
   const prefs = await listContactAlertPrefsByClient(sensor.client_id!);
