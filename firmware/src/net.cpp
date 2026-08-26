@@ -16,6 +16,20 @@ namespace net {
 
 static DHT dht(DHT_PIN, DHT22);
 
+// --- Breadcrumb de crash (ver net.h) -------------------------------------------------------
+// RTC_NOINIT_ATTR nao e zerada por reset de watchdog/panic — so o power-on chega com lixo, dai
+// o magic. bootCount conta TODO reboot, inclusive os que o servidor nao registra (ele dedupe
+// por motivo, entao uma sequencia de INT_WDT iguais aparece la como um evento so).
+static const uint32_t CRASH_MAGIC = 0xC0FFEE01;
+static RTC_NOINIT_ATTR uint32_t crashMagic;
+static RTC_NOINIT_ATTR uint32_t bootCount;
+static RTC_NOINIT_ATTR uint8_t stageNet, stageUi;
+// Congelados no boot: o que cada core estava fazendo quando o device morreu.
+static uint8_t prevStageNet = 0, prevStageUi = 0;
+
+void mark(Stage s) { stageNet = static_cast<uint8_t>(s); }
+void markUi(Stage s) { stageUi = static_cast<uint8_t>(s); }
+
 // --- Buffer offline (ring buffer em RAM) --------------------------------------------------
 // ponytail: RAM only — leituras se perdem em reboot; mover para LittleFS se isso doer.
 struct Reading {
@@ -169,6 +183,10 @@ static bool ensureConnected() {
 static WiFiClientSecure makeSecureClient() {
   WiFiClientSecure client;
   client.setInsecure();
+  // O default do handshake TLS e 30s — exatamente o timeout do watchdog. Um aperto de mao
+  // lento (WiFi ruim) segurava a task de rede tempo suficiente pro WDT reiniciar o device no
+  // meio do envio: e o "watchdog (tarefa travada)" que aparece no painel.
+  client.setHandshakeTimeout(8);
   return client;
 }
 
@@ -179,6 +197,8 @@ static void sendDeviceTest() {
     testState = TestState::FAILED;
     return;
   }
+  http.setConnectTimeout(8000);
+  http.setTimeout(8000);
   http.addHeader("X-Device-Token", storage::loadDeviceToken());
   int code = http.POST("");
   http.end();
@@ -193,6 +213,8 @@ static bool provision(String& tokenOut) {
   WiFiClientSecure client = makeSecureClient();
   HTTPClient http;
   if (!http.begin(client, String(SERVER_URL) + "/api/provision")) return false;
+  http.setConnectTimeout(8000);
+  http.setTimeout(8000);
   http.addHeader("Content-Type", "application/json");
 
   JsonDocument doc;
@@ -268,6 +290,10 @@ static IngestResult sendIngest(const Reading* batch, size_t count, bool sensorSt
   WiFiClientSecure client = makeSecureClient();
   HTTPClient http;
   if (!http.begin(client, String(SERVER_URL) + "/api/ingest")) return result;
+  // Teto explicito por POST: connect + leitura somam no maximo ~16s, bem abaixo dos 30s do
+  // watchdog. Sem isso um unico POST pendurado derrubava a task inteira.
+  http.setConnectTimeout(8000);
+  http.setTimeout(8000);
   http.addHeader("Content-Type", "application/json");
   http.addHeader("X-Device-Token", storage::loadDeviceToken());
 
@@ -286,6 +312,14 @@ static IngestResult sendIngest(const Reading* batch, size_t count, bool sensorSt
   doc["device_name"] = storage::loadDeviceName();
   doc["reset_reason"] = resetReasonStr();
   doc["sensor_stale"] = sensorStale;
+  // b=boots desde o ultimo power-on, n/u=stage de cada core no crash anterior, h=heap livre,
+  // s=folga da stack desta task (o handshake TLS e o maior consumidor), up=uptime deste boot.
+  char diag[80];
+  snprintf(diag, sizeof(diag), "b%lu n%u u%u h%uk s%u up%lus", (unsigned long)bootCount,
+           prevStageNet, prevStageUi, (unsigned)(ESP.getFreeHeap() / 1024),
+           (unsigned)uxTaskGetStackHighWaterMark(nullptr), (unsigned long)(millis() / 1000));
+  doc["diag"] = diag;
+  doc["boot_id"] = bootCount;
 
   String body;
   serializeJson(doc, body);
@@ -369,6 +403,7 @@ static void task(void* pvParameters) {
     // enviar são efeitos à parte que NUNCA podem impedir a leitura de aparecer na tela.
     // readDht() já bloqueia ~7,5s (3 amostras) resetando o WDT, então ele também é o "ritmo"
     // do loop — sem precisar de delays extras nos caminhos de erro.
+    mark(Stage::DHT);
     float temp = NAN, hum = NAN;
     bool hasReading = readDht(temp, hum);
     sensorFailStreak = hasReading ? 0 : min<uint16_t>(sensorFailStreak + 1, 255);
@@ -385,6 +420,7 @@ static void task(void* pvParameters) {
       }
     }
 
+    mark(Stage::WIFI);
     bool connected = ensureConnected();
     int16_t rssi = connected ? static_cast<int16_t>(WiFi.RSSI()) : 0;
 
@@ -400,6 +436,7 @@ static void task(void* pvParameters) {
     // inalcançável até alguém ir lá com um cabo USB.
     if (!storage::hasDeviceToken()) {
       String token;
+      mark(Stage::PROVISION);
       if (provision(token)) {
         storage::saveDeviceToken(token);
       } else {
@@ -414,6 +451,7 @@ static void task(void* pvParameters) {
     // Teste pedido pela UI — só chega aqui já conectado e provisionado.
     if (testRequested) {
       testRequested = false;
+      mark(Stage::TEST);
       sendDeviceTest();
     }
 
@@ -424,16 +462,22 @@ static void task(void* pvParameters) {
       // offline — e o ESP.restart() de INGEST_STALE_RESTART_MS reiniciava de 10 em 10 min pra
       // sempre, já que lastOkSendMs só era atualizado dentro do laço de drenagem abaixo.
       if (ringCount == 0 && sensorStale) {
+        mark(Stage::INGEST);
         IngestResult hb = sendIngest(nullptr, 0, true);
         if (hb.ok) {
           lastOkSendMs = millis();
           // Buffer vazio por definição aqui, então o GOTCHA do OTA já está satisfeito — e este é
           // o único caminho de atualização que sobra pra um device cujo sensor morreu.
-          if (hb.otaUrl.length() > 0) runOta(hb.otaUrl);
+          if (hb.otaUrl.length() > 0) { mark(Stage::OTA); runOta(hb.otaUrl); }
         }
       }
       // Drena o buffer em lotes de 20 até esvaziar ou até um POST falhar (fica pro próximo ciclo).
       while (ringCount > 0) {
+        // Um POST por lote de 20: depois de uma queda longa o buffer tem centenas de leituras e
+        // este laco fazia varios POSTs seguidos sem alimentar o watchdog uma vez sequer — o
+        // device reiniciava justamente ao voltar do offline, e reiniciar o punha offline de novo.
+        esp_task_wdt_reset();
+        mark(Stage::INGEST);
         Reading batch[20];
         size_t n = ringPeekBatch(batch, 20);
         IngestResult result = sendIngest(batch, n, false);
@@ -442,6 +486,7 @@ static void task(void* pvParameters) {
         ringPop(n);
         if (result.otaUrl.length() > 0 && ringCount == 0) {
           // Nunca OTA com buffer não-drenado (GOTCHA da Task 12).
+          mark(Stage::OTA);
           runOta(result.otaUrl);
         }
       }
@@ -453,11 +498,21 @@ static void task(void* pvParameters) {
 
     bool ingestHealthy = millis() - lastOkSendMs < INGEST_STALE_UI_MS;
     publish(uiQueue, ingestHealthy ? Status::ONLINE : Status::OFFLINE, hasReading, sensorStale, temp, hum, rssi);
+    mark(Stage::IDLE);
     vTaskDelay(pdMS_TO_TICKS(READ_INTERVAL_MS));
   }
 }
 
 void begin(QueueHandle_t uiQueue) {
+  if (crashMagic != CRASH_MAGIC) {  // power-on: RTC RAM vem com lixo
+    crashMagic = CRASH_MAGIC;
+    bootCount = 0;
+    stageNet = stageUi = 0;
+  }
+  prevStageNet = stageNet;  // guarda o estado do boot que morreu antes de zerar
+  prevStageUi = stageUi;
+  bootCount++;
+  stageNet = stageUi = 0;
   xTaskCreatePinnedToCore(task, "net", 8192, uiQueue, 1, nullptr, 0);
 }
 

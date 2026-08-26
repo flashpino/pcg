@@ -46,4 +46,13 @@ TestState consumeTestResult();
 // roda (bloqueia a task de rede inteira — sem evento de fila pra isso, só um flag).
 bool isOtaUpdating();
 
+// --- Breadcrumb de crash -------------------------------------------------------------------
+// O device reinicia sozinho varias vezes por dia (INT_WDT/TASK_WDT) e esp_reset_reason() so diz
+// QUE travou, nunca ONDE: o backtrace do panic morre no serial e nao ha USB no cliente. Cada
+// trecho bloqueante marca em que estava; o valor sobrevive ao reset (RTC RAM) e volta no
+// primeiro ingest do boot seguinte, dentro de `diag`.
+enum class Stage : uint8_t { IDLE, DHT, WIFI, INGEST, PROVISION, OTA, TEST, UI_TICK, UI_SCAN };
+void mark(Stage s);    // task de rede (core 0)
+void markUi(Stage s);  // UI (core 1)
+
 }  // namespace net

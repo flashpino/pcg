@@ -16,6 +16,8 @@ interface IngestBody {
   device_name?: string;
   reset_reason?: string;
   sensor_stale?: boolean;
+  boot_id?: number;   // contador de boots do device (RTC RAM); só o firmware >= 1.1.39 manda
+  diag?: string;      // breadcrumb do crash anterior + heap/stack — ver net.h do firmware
 }
 
 // Fronteira de confiança (device remoto) — validação de faixa não é opcional.
@@ -33,6 +35,22 @@ function isValidReading(r: Partial<Reading> | undefined): r is Reading {
 // Lote vazio só é aceito como heartbeat de sensor travado (o device declara sensor_stale). Sem
 // essa exceção o device com DHT morto não tinha o que enviar, não chamava /api/ingest, e o painel
 // o rotulava "offline" — indistinguível de queda de rede. O teto de 400 vale nos dois casos.
+// reset_reason é constante durante o boot atual, então a chave de dedupe define o que conta como
+// "um reboot novo". Só o motivo não bastava: um device travando de hora em hora sempre pelo mesmo
+// watchdog aparecia como UM evento e o painel subcontava os reboots feio (o caso do proatus_F794).
+// Com boot_id (contador em RTC RAM), cada reinício vira um registro — mas notificar continua preso
+// à mudança de motivo, senão registrar todo reboot viraria um WhatsApp por reboot pro admin.
+export function decideReboot(
+  resetReason: string,
+  bootId: number | undefined,
+  previous: string | null,
+): { key: string; quiet: boolean } | null {
+  const key = bootId != null ? `${resetReason}#${bootId}` : resetReason;
+  const prev = previous ?? '';
+  if (key === prev) return null;
+  return { key, quiet: prev.split('#')[0] === resetReason };
+}
+
 export function isValidIngestReadings(readings: unknown[], sensorStale: boolean): boolean {
   if (readings.length > 400) return false;
   if (readings.length === 0) return sensorStale;
@@ -48,14 +66,16 @@ export async function ingestRoutes(app: FastifyInstance): Promise<void> {
     const sensor = await getSensorByToken(token);
     if (!sensor) throw Object.assign(new Error('token inválido'), { statusCode: 401 });
 
-    // reset_reason vem em todo ingest (constante durante o boot atual) — só notifica quando
-    // muda em relação ao último já registrado, senão vira spam a cada ingest (ex. a cada 20s).
-    // ponytail: dedupe por string igual; um 2º reboot com o MESMO motivo em sequência não
-    // gera novo alerta — se isso importar, trocar por um contador/uptime do device.
-    if (req.body.reset_reason && req.body.reset_reason !== sensor.last_reset_reason) {
-      req.log.info({ sensor: sensor.name, reset_reason: req.body.reset_reason }, 'device reset reason');
-      await notifyAdminsReboot(sensor, req.body.reset_reason);
-      await updateSensor(sensor.id, { last_reset_reason: req.body.reset_reason });
+    const reboot = req.body.reset_reason
+      ? decideReboot(req.body.reset_reason, req.body.boot_id, sensor.last_reset_reason)
+      : null;
+    if (reboot) {
+      req.log.info(
+        { sensor: sensor.name, reset_reason: req.body.reset_reason, diag: req.body.diag },
+        'device reset reason',
+      );
+      await notifyAdminsReboot(sensor, req.body.reset_reason!, req.body.diag, reboot.quiet);
+      await updateSensor(sensor.id, { last_reset_reason: reboot.key });
     }
 
     const readings = req.body?.readings ?? [];

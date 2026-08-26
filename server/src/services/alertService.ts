@@ -321,7 +321,16 @@ const RESET_REASON_LABELS: Record<string, string> = {
 // Evento pontual (não tem firing/resolved real) — reusa o truque do 'test'/welcome:
 // createResolvedAlert só pra ter um alert_id pra pendurar a notification. Vai só pra admins
 // com telefone, sem janela de horário/preferência (mesmo critério de notifyAdminsHardware).
-export async function notifyAdminsReboot(sensor: Sensor, resetReason: string): Promise<void> {
+// `diag` é o breadcrumb do firmware (stage de cada core no crash, heap, folga de stack) — vai
+// anexado à mensagem porque é a única evidência de ONDE o device travou: sem USB no cliente, o
+// backtrace do panic se perde. `quiet` registra o reboot sem acordar ninguém: repetição do mesmo
+// motivo entra no histórico, mas só a primeira ocorrência vira mensagem.
+export async function notifyAdminsReboot(
+  sensor: Sensor,
+  resetReason: string,
+  diag?: string,
+  quiet = false,
+): Promise<void> {
   if (resetReason === 'poweron') return;
 
   const cliente = await clientNameOf(sensor);
@@ -334,8 +343,9 @@ export async function notifyAdminsReboot(sensor: Sensor, resetReason: string): P
     quando,
   };
   const texts = await renderMessage('reboot_fire', vars);
-  const alert = await createResolvedAlert(sensor.id, 'reboot', texts.whatsapp);
-  await notifyAdmins(alert, texts.whatsapp);
+  const message = diag ? `${texts.whatsapp}\n\n🔧 ${diag}` : texts.whatsapp;
+  const alert = await createResolvedAlert(sensor.id, 'reboot', message);
+  if (!quiet) await notifyAdmins(alert, message);
 }
 
 // Dispara quando o `fw` reportado no ingest muda em relação ao last_firmware anterior — é o

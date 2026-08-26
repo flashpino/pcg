@@ -555,6 +555,7 @@ static void showWifiList() {
   // WiFi.begin()/disconnect quando a UI (core 1) chama scanNetworks() — o driver do
   // ESP-IDF não libera o rádio instantaneamente, e o scan volta WIFI_SCAN_FAILED (n=-2)
   // nesse instante. Retry curto dá tempo do rádio assentar sem travar a tela por muito tempo.
+  net::markUi(net::Stage::UI_SCAN);
   net::pauseForScan(true);
   // A task de rede só vê o pedido no próximo passo de 250ms do loop dela. Escanear antes
   // disso pega o rádio no meio de um WiFi.begin(). Na bancada isso não aparecia porque lá o
@@ -924,6 +925,7 @@ void begin(QueueHandle_t netEventQueue) {
 }
 
 void tick() {
+  net::markUi(net::Stage::UI_TICK);
   lv_timer_handler();
 
   if (scrCalibration && lv_scr_act() == scrCalibration && touchCtrl.touched()) {
