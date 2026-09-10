@@ -89,17 +89,6 @@ export async function ingestRoutes(app: FastifyInstance): Promise<void> {
 
     const calibrated = readings.map((r) => ({ ...r, temp: r.temp + sensor.temp_offset }));
 
-    // Heartbeat de sensor travado não tem ponto pra gravar — pular o Influx aqui é o que permite
-    // o device seguir marcando presença (last_seen_at) mesmo sem nenhuma leitura.
-    if (calibrated.length > 0) {
-      writeReadings(sensor.client_id, sensor.id, calibrated);
-      try {
-        await flushInflux();
-      } catch (err) {
-        throw Object.assign(new Error('falha ao escrever no influx'), { statusCode: 500, cause: err });
-      }
-    }
-
     // Só notifica se já havia uma versão anterior registrada — sem isso o 1º ingest de todo
     // sensor recém-provisionado (last_firmware ainda NULL) dispararia um "atualizou" falso.
     if (sensor.last_firmware !== req.body.fw) {
@@ -107,6 +96,13 @@ export async function ingestRoutes(app: FastifyInstance): Promise<void> {
       if (sensor.last_firmware) await notifyAdminsFirmwareUpdate(sensor, sensor.last_firmware, req.body.fw);
     }
 
+    // PRESENÇA ANTES DO ARMAZENAMENTO, e a ordem aqui é o conserto de um incidente real: o
+    // last_seen_at ficava depois do flushInflux(), então uma falha do Influx derrubava a
+    // requisição antes desta linha. O device tinha chegado e sido atendido, mas não ficava
+    // registro disso — o sweep de conectividade dava a FROTA como offline (alerta falso de
+    // queda pros clientes) e cada device, vendo o 5xx, reiniciava de 10 em 10 min em lockstep.
+    // "O sensor falou comigo" é fato independente de o banco de séries ter aceitado os pontos;
+    // misturar as duas coisas transformava um soluço do Influx em apagão da frota inteira.
     await updateSensor(sensor.id, {
       last_seen_at: new Date().toISOString(),
       last_firmware: req.body.fw,
@@ -115,6 +111,18 @@ export async function ingestRoutes(app: FastifyInstance): Promise<void> {
       // "novo-<mac>" do provisionamento pra sempre (device_name chegava mas nunca era lido).
       ...(req.body.device_name && req.body.device_name !== sensor.name ? { name: req.body.device_name } : {}),
     });
+
+    // Heartbeat de sensor travado não tem ponto pra gravar — pular o Influx aqui é o que permite
+    // o device seguir marcando presença (last_seen_at) mesmo sem nenhuma leitura.
+    // O 500 continua: é ele que faz o device guardar o lote e reenviar depois, sem perder leitura.
+    if (calibrated.length > 0) {
+      writeReadings(sensor.client_id, sensor.id, calibrated);
+      try {
+        await flushInflux();
+      } catch (err) {
+        throw Object.assign(new Error('falha ao escrever no influx'), { statusCode: 500, cause: err });
+      }
+    }
 
     // Alerta de hardware é decidido pelo que o device declara, não por ausência de ingest —
     // resolve sozinho no primeiro lote com leitura de verdade.

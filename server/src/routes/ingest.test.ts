@@ -1,16 +1,46 @@
-import { describe, expect, it, vi } from 'vitest';
-import { decideReboot, isValidIngestReadings } from './ingest.js';
+import Fastify from 'fastify';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { decideReboot, ingestRoutes, isValidIngestReadings } from './ingest.js';
+
+const mocks = vi.hoisted(() => ({
+  flushInflux: vi.fn(async () => {}),
+  writeReadings: vi.fn(),
+  getSensorByToken: vi.fn(),
+  updateSensor: vi.fn(async () => {}),
+}));
 
 // influx.js instancia o cliente no load do módulo e explode sem INFLUX_URL — mockado só pra
-// conseguir importar a rota (mesmo motivo do mock em alertService.test.ts). Aqui só se testa
-// função pura de validação; nada de rede é exercitado.
+// conseguir importar a rota (mesmo motivo do mock em alertService.test.ts). Nada de rede é
+// exercitado: flushInflux é o ponto que o teste de presença precisa fazer falhar de propósito.
 vi.mock('../services/influx.js', () => ({
-  flushInflux: vi.fn(),
-  writeReadings: vi.fn(),
+  flushInflux: mocks.flushInflux,
+  writeReadings: mocks.writeReadings,
   queryLatestReadings: vi.fn(async () => new Map()),
 }));
 
+vi.mock('../db/queries.js', () => ({
+  getSensorByToken: mocks.getSensorByToken,
+  updateSensor: mocks.updateSensor,
+}));
+
+vi.mock('../services/alertService.js', () => ({
+  evaluate: vi.fn(async () => {}),
+  evaluateHardware: vi.fn(async () => {}),
+  notifyAdminsFirmwareUpdate: vi.fn(async () => {}),
+  notifyAdminsReboot: vi.fn(async () => {}),
+  sendTest: vi.fn(async () => {}),
+}));
+
 const boa = { temp: 23.4, hum: 55, rssi: -28, ago_ms: 0 };
+
+const sensorFake = {
+  id: 1, client_id: 2, name: 'proatus_TESTE', mac: 'AA:BB', device_token: 'tok',
+  temp_min: null, temp_max: null, hum_min: null, hum_max: null,
+  interval_seconds: 60, offline_after_seconds: 900, target_firmware: null,
+  last_seen_at: null, last_firmware: '1.1.41', local: null, temp_offset: 0,
+  last_reset_reason: null, last_variant: null, test_schedule_dow: null,
+  test_schedule_time: null, force_ota: false,
+};
 
 describe('decideReboot', () => {
   // Regressão de campo (2026-08-26, proatus_F794): 40 "reboots" em 7 dias no painel eram só as
@@ -34,6 +64,42 @@ describe('decideReboot', () => {
   it('sem boot_id mantém o comportamento antigo', () => {
     expect(decideReboot('panic', undefined, 'panic')).toBeNull();
     expect(decideReboot('panic', undefined, 'brownout')).toEqual({ key: 'panic', quiet: false });
+  });
+});
+
+// Regressão de campo (2026-09-10): o last_seen_at era gravado DEPOIS do flushInflux(), então uma
+// falha do Influx abortava a requisição antes dele. Os devices chegavam e eram atendidos, mas não
+// ficava registro — o sweep deu os 3 sensores (em 2 sites diferentes) como offline ao mesmo tempo,
+// disparou alerta falso de queda pros clientes, e cada device, vendo o 5xx, reiniciou em lockstep
+// de 10 em 10 min. Isso aqui é um teste de ORDEM: se alguém mover a gravação de presença pra
+// depois do Influx de novo, este teste quebra.
+describe('POST /api/ingest', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.getSensorByToken.mockResolvedValue(sensorFake);
+    mocks.updateSensor.mockResolvedValue(undefined);
+  });
+
+  it('registra presença mesmo com o Influx fora', async () => {
+    mocks.flushInflux.mockRejectedValue(new Error('influx fora do ar'));
+
+    const app = Fastify();
+    await app.register(ingestRoutes);
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/ingest',
+      headers: { 'x-device-token': 'tok' },
+      payload: { readings: [boa], fw: '1.1.41' },
+    });
+    await app.close();
+
+    // O 500 continua sendo a resposta certa: é ele que faz o device guardar o lote e reenviar,
+    // em vez de dar as leituras por entregues e descartá-las.
+    expect(res.statusCode).toBe(500);
+    const gravouPresenca = mocks.updateSensor.mock.calls.some(
+      ([, patch]) => (patch as Record<string, unknown>)?.last_seen_at,
+    );
+    expect(gravouPresenca).toBe(true);
   });
 });
 
