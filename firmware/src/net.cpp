@@ -346,6 +346,11 @@ static const char* resetReasonStr() {
 // --- Ingest ------------------------------------------------------------------------------------
 struct IngestResult {
   bool ok;
+  // Servidor respondeu ALGUMA coisa (inclusive 4xx/5xx). Distinto de `ok` de propósito: um 500
+  // prova que Wi-Fi, rota, DNS e TLS estão de pé e que a nuvem atendeu — reiniciar o device não
+  // conserta um Influx caído lá, só tira o sensor do ar junto. Só a ausência de resposta indica
+  // pilha de rede travada, que é o único caso em que o reboot é de fato o self-heal.
+  bool answered;
   String otaUrl;  // vazio se não houver OTA pendente
 };
 
@@ -353,7 +358,7 @@ struct IngestResult {
 // e o server aceita só nessa condição. É o que mantém last_seen_at fresco (device aparece online,
 // com alerta de hardware) em vez de sumir do painel como se fosse queda de rede.
 static IngestResult sendIngest(const Reading* batch, size_t count, bool sensorStale) {
-  IngestResult result{false, ""};
+  IngestResult result{false, false, ""};
 
   WiFiClientSecure client = makeSecureClient();
   HTTPClient http;
@@ -392,6 +397,9 @@ static IngestResult sendIngest(const Reading* batch, size_t count, bool sensorSt
   String body;
   serializeJson(doc, body);
   int code = http.POST(body);
+  // Código negativo = erro do lado do cliente (sem conexão, timeout, TLS): ninguém atendeu.
+  // Qualquer código HTTP, mesmo 500, significa que a nuvem respondeu.
+  result.answered = code > 0;
 
   // 401 = o sensor foi deletado no painel (DELETE físico leva o device_token junto). O token
   // gravado aqui nunca mais vai valer, e o servidor não tem como reemitir: o corpo do ingest
@@ -460,6 +468,7 @@ static void task(void* pvParameters) {
 
   uint32_t lastSendMs = 0;  // primeiro envio acontece ~60s depois do boot, igual antes
   uint32_t lastOkSendMs = millis();  // início "saudável" — só o 1º ciclo de envio real confirma
+  uint32_t lastAnsweredMs = millis();  // última vez que o servidor respondeu ALGO (ver IngestResult)
   uint8_t sensorFailStreak = 0;
   float stuckTemp = NAN, stuckHum = NAN;
   uint32_t stuckSinceMs = 0;
@@ -533,6 +542,7 @@ static void task(void* pvParameters) {
       if (ringCount == 0 && sensorStale) {
         mark(Stage::INGEST);
         IngestResult hb = sendIngest(nullptr, 0, true);
+        if (hb.answered) lastAnsweredMs = millis();
         if (hb.ok) {
           lastOkSendMs = millis();
           // Buffer vazio por definição aqui, então o GOTCHA do OTA já está satisfeito — e este é
@@ -550,6 +560,7 @@ static void task(void* pvParameters) {
         Reading batch[20];
         size_t n = ringPeekBatch(batch, 20);
         IngestResult result = sendIngest(batch, n, false);
+        if (result.answered) lastAnsweredMs = millis();
         if (!result.ok) break;
         lastOkSendMs = millis();
         ringPop(n);
@@ -561,9 +572,13 @@ static void task(void* pvParameters) {
       }
     }
 
-    // Wi-Fi local pode seguir "conectado" (WL_CONNECTED) mesmo com a nuvem inalcançável —
-    // por isso o reboot automático olha pro sucesso real do ingest, não pro rádio.
-    if (millis() - lastOkSendMs >= INGEST_STALE_RESTART_MS) ESP.restart();
+    // Wi-Fi local pode seguir "conectado" (WL_CONNECTED) mesmo com a nuvem inalcançável — por
+    // isso o reboot automático não olha pro rádio. Mas olha pra CONTATO com o servidor, não pro
+    // ingest ter dado certo: quando o Influx caiu, o servidor respondia 500 e os 3 devices, em
+    // 2 sites diferentes, reiniciaram em lockstep de 10 em 10 min sem que isso ajudasse em nada
+    // — só somava o sensor fora do ar ao problema que já existia na nuvem. Reboot é self-heal
+    // pra pilha de rede travada aqui dentro; erro do outro lado se resolve do outro lado.
+    if (millis() - lastAnsweredMs >= INGEST_STALE_RESTART_MS) ESP.restart();
 
     bool ingestHealthy = millis() - lastOkSendMs < INGEST_STALE_UI_MS;
     publish(uiQueue, ingestHealthy ? Status::ONLINE : Status::OFFLINE, hasReading, sensorStale, temp, hum, rssi);
