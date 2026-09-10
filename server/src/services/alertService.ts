@@ -57,13 +57,36 @@ export function violatedBound(value: number, bound: Bound): number | string {
   return bound.max ?? bound.min ?? '-';
 }
 
-// A renotificação fala do alerta que está em curso, não da leitura do momento: na zona morta da
-// histerese o valor atual já voltou pra dentro do limite, e mandar "29.6°C / limite 30°C" contradiz
-// o próprio alarme. Nesse caso usa o valor que disparou o alerta (alerts.value); se a leitura atual
-// ainda viola o limite, ela é mais informativa (a temperatura pode ter piorado desde o disparo).
-export function renotifyValue(current: number, bound: Bound, firedValue: number | null): number {
-  if (isOutOfBounds(current, bound)) return current;
-  return firedValue ?? current;
+// Extraída à parte pra poder testar sem tocar Influx/Postgres, mesmo motivo de connectivityVars.
+//
+// O valor mostrado JÁ FOI congelado no que disparou o alerta, pra evitar que a renotificação se
+// contradissesse ("29.6°C / limite 30°C" parece alarme infundado). O remédio saiu pior que a
+// doença: em 2026-09-10 um pico espúrio de 30.4°C no proatus_C528 virou 61 mensagens em 86
+// minutos afirmando "Temperatura: 30.4°C", enquanto a sala já estava em 24.2 e o alerta seguia
+// aberto só porque a zona morta da histerese (24.0–24.5) não deixava resolver. Quem recebia lia
+// que a climatização não tinha reagido em uma hora e meia — o oposto do que estava acontecendo.
+//
+// Agora vão os DOIS: `temperatura`/`umidade` é sempre a leitura de agora (nunca mente sobre o
+// presente) e `pico` é o valor que abriu o alerta (explica por que o alarme continua aberto).
+// Pro pico aparecer na mensagem, o template precisa usar {{$pico}} — painel > Mensagens.
+export function boundVars(
+  sensor: Pick<Sensor, 'name' | 'local'>,
+  cliente: string,
+  valueVar: 'temperatura' | 'umidade',
+  value: number,
+  bound: Bound,
+  firedValue: number | null,
+): Record<string, string | number> {
+  return {
+    sensor: sensor.name,
+    cliente,
+    local: sensor.local ?? '',
+    [valueVar]: value,
+    pico: firedValue ?? value,
+    min: bound.min ?? '-',
+    max: bound.max ?? '-',
+    limite: violatedBound(value, bound),
+  };
 }
 
 export function decideTransition(value: number, bound: Bound, firing: boolean): Transition {
@@ -181,16 +204,7 @@ async function evaluateType(
 
   const cliente = await clientNameOf(sensor);
   const valueVar = type === 'temperature' ? 'temperatura' : 'umidade';
-  const shown = transition === 'renotify' ? renotifyValue(value, bound, firing!.value) : value;
-  const vars = {
-    sensor: sensor.name,
-    cliente,
-    local: sensor.local ?? '',
-    [valueVar]: shown,
-    min: bound.min ?? '-',
-    max: bound.max ?? '-',
-    limite: violatedBound(shown, bound),
-  };
+  const vars = boundVars(sensor, cliente, valueVar, value, bound, firing?.value ?? null);
 
   if (transition === 'fire') {
     const texts = await renderMessage(`${type}_fire`, vars);

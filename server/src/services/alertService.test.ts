@@ -8,7 +8,7 @@ import {
   evaluateHardware,
   isBackInBounds,
   notifyAdminsFirmwareUpdate,
-  renotifyValue,
+  boundVars,
   sendContactTest,
   sendDailyReport,
   sendTest,
@@ -88,19 +88,29 @@ describe('decideTransition', () => {
   });
 });
 
-describe('renotifyValue', () => {
-  // Regressão: contato recebeu "Temperatura: 29.6°C / Limite: 30°C" — a renotificação usava a
-  // leitura atual, que na zona morta da histerese já está dentro do limite e contradiz o alarme.
-  it('na zona morta da histerese usa o valor que disparou o alerta', () => {
-    expect(renotifyValue(29.6, { min: null, max: 30 }, 31)).toBe(31);
+describe('boundVars', () => {
+  const sensorFake = { name: 'proatus_TESTE', local: 'CPD' };
+
+  // Regressão de campo (2026-09-10, proatus_C528): um pico espúrio de 30.4°C prendeu o alerta e
+  // as 61 renotificações seguintes repetiram "30.4°C" por 86 minutos, porque o valor mostrado
+  // ficava congelado no que disparou. A sala já estava em 24.2 — quem recebia concluía que a
+  // climatização não tinha reagido em uma hora e meia. O valor mostrado NUNCA pode mentir sobre
+  // o presente; quem explica o alarme aberto é o pico, à parte.
+  it('renotificação na zona morta mostra a leitura de agora, com o pico à parte', () => {
+    const vars = boundVars(sensorFake, 'Supera', 'temperatura', 24.2, { min: 0, max: 24.5 }, 30.4);
+    expect(vars.temperatura).toBe(24.2);
+    expect(vars.pico).toBe(30.4);
+    expect(vars.limite).toBe(24.5);
   });
 
-  it('ainda fora do limite usa a leitura atual (mais recente que o disparo)', () => {
-    expect(renotifyValue(35, { min: null, max: 30 }, 31)).toBe(35);
+  it('alerta antigo sem valor gravado usa a leitura atual como pico', () => {
+    expect(boundVars(sensorFake, 'Supera', 'temperatura', 24.2, { min: 0, max: 24.5 }, null).pico).toBe(24.2);
   });
 
-  it('alerta antigo sem valor gravado cai na leitura atual', () => {
-    expect(renotifyValue(29.6, { min: null, max: 30 }, null)).toBe(29.6);
+  it('umidade preenche a própria variável', () => {
+    const vars = boundVars(sensorFake, 'Supera', 'umidade', 80, { min: 0, max: 70 }, 85);
+    expect(vars.umidade).toBe(80);
+    expect(vars.pico).toBe(85);
   });
 });
 

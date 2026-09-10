@@ -6,7 +6,9 @@ const mocks = vi.hoisted(() => ({
   flushInflux: vi.fn(async () => {}),
   writeReadings: vi.fn(),
   getSensorByToken: vi.fn(),
-  updateSensor: vi.fn(async () => {}),
+  // Parâmetros declarados de propósito: sem eles mock.calls vira tupla vazia e o tsc recusa
+  // qualquer leitura de argumento (o teste de presença abaixo precisa inspecionar o patch).
+  updateSensor: vi.fn(async (_id: number, _patch: Record<string, unknown>) => {}),
 }));
 
 // influx.js instancia o cliente no load do módulo e explode sem INFLUX_URL — mockado só pra
@@ -96,9 +98,7 @@ describe('POST /api/ingest', () => {
     // O 500 continua sendo a resposta certa: é ele que faz o device guardar o lote e reenviar,
     // em vez de dar as leituras por entregues e descartá-las.
     expect(res.statusCode).toBe(500);
-    const gravouPresenca = mocks.updateSensor.mock.calls.some(
-      ([, patch]) => (patch as Record<string, unknown>)?.last_seen_at,
-    );
+    const gravouPresenca = mocks.updateSensor.mock.calls.some(([, patch]) => patch?.last_seen_at);
     expect(gravouPresenca).toBe(true);
   });
 });
