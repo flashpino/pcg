@@ -6,6 +6,7 @@
 #include <SPI.h>
 #include <TFT_eSPI.h>
 #include <WiFi.h>
+#include <algorithm>
 #include <esp_task_wdt.h>
 #include <XPT2046_Touchscreen.h>
 #include <lvgl.h>
@@ -584,8 +585,21 @@ static void showWifiList() {
     snprintf(diag, sizeof(diag), "nenhuma rede (n=%d mode=%d st=%d)", n, WiFi.getMode(), WiFi.status());
     lv_list_add_text(wifiListWidget, diag);
   } else {
-    for (int16_t i = 0; i < n; i++) {
-      lv_obj_t* btn = lv_list_add_btn(wifiListWidget, LV_SYMBOL_WIFI, WiFi.SSID(i).c_str());
+    // BUG real em bancada: área com muitos APs/mesh devolve n=123, e colocar 123 botões na
+    // lista LVGL (pool de 48KB) estoura a memória e crasha (Guru Meditation StoreProhibited)
+    // bem no meio de montar a tela — o device reinicia antes de mostrar qualquer rede, dando
+    // a impressão de "nunca acha nada". Mostra só as MAX_SHOWN de sinal mais forte: a rede do
+    // próprio cliente costuma estar entre as mais fortes, e cabe no heap e na tela.
+    static const int16_t MAX_SHOWN = 30;
+    int16_t total = min<int16_t>(n, 256);
+    int16_t order[256];
+    for (int16_t i = 0; i < total; i++) order[i] = i;
+    std::sort(order, order + total,
+              [](int16_t a, int16_t b) { return WiFi.RSSI(a) > WiFi.RSSI(b); });
+
+    int16_t shown = min<int16_t>(total, MAX_SHOWN);
+    for (int16_t i = 0; i < shown; i++) {
+      lv_obj_t* btn = lv_list_add_btn(wifiListWidget, LV_SYMBOL_WIFI, WiFi.SSID(order[i]).c_str());
       lv_obj_add_event_cb(btn, onWifiNetworkClicked, LV_EVENT_CLICKED, nullptr);
     }
   }
