@@ -2,19 +2,88 @@
 #include "config.h"
 #include "storage.h"
 
+#include "dht22_decode.h"
+
 #include <ArduinoJson.h>
-#include <DHT.h>
 #include <HTTPClient.h>
 #include <HTTPUpdate.h>
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
+#include <driver/rmt.h>
 #include <esp_task_wdt.h>
 #include <esp_system.h>
 #include <time.h>
 
 namespace net {
 
-static DHT dht(DHT_PIN, DHT22);
+// --- DHT22 via RMT ---------------------------------------------------------------------------
+// A lib Adafruit lia o sensor por bit-banging DENTRO de um InterruptLock: a precisão do tempo
+// vinha de a CPU não ser interrompida. Quando o sensor não respondia, cada uma das ~82
+// transições esgotava seu timeout com as interrupções desligadas, passava dos 300ms do
+// interrupt watchdog e o device reiniciava — 497 resets em 7 dias, 100% deles com o breadcrumb
+// parado em Stage::DHT. Nenhum esp_task_wdt_reset() protege disso: o INT_WDT é alimentado pela
+// interrupção de tick do FreeRTOS, que não roda com as interrupções desligadas.
+//
+// O RMT mede as durações em hardware e entrega um vetor pronto, então as interrupções nunca são
+// desligadas e a CPU fica BLOQUEADA num ring buffer em vez de girar em laço. Sensor mudo agora
+// é uma leitura que falha (caminho que sensorFailStreak/sensorStale já tratam), não um reset.
+static const rmt_channel_t DHT_RMT_CHANNEL = RMT_CHANNEL_0;
+static RingbufHandle_t dhtRingbuf = nullptr;
+
+static bool dhtRmtBegin() {
+  rmt_config_t cfg = {};
+  cfg.rmt_mode = RMT_MODE_RX;
+  cfg.channel = DHT_RMT_CHANNEL;
+  cfg.gpio_num = static_cast<gpio_num_t>(DHT_PIN);
+  cfg.mem_block_num = 2;                    // 128 itens; o quadro do DHT22 usa ~43
+  cfg.clk_div = 80;                         // APB 80MHz / 80 = 1 tick por microssegundo
+  cfg.rx_config.filter_en = true;
+  cfg.rx_config.filter_ticks_thresh = 8;    // glitch < 8µs some (o bit 0 tem ~27µs)
+  cfg.rx_config.idle_threshold = 120;       // 120µs sem transição fecha o quadro
+  if (rmt_config(&cfg) != ESP_OK) return false;
+  if (rmt_driver_install(DHT_RMT_CHANNEL, 1024, 0) != ESP_OK) return false;
+  if (rmt_get_ringbuf_handle(DHT_RMT_CHANNEL, &dhtRingbuf) != ESP_OK) return false;
+
+  // O mesmo pino precisa servir de saída (pulso de start) e de entrada do RMT. Dreno aberto com
+  // pull-up, igual a um barramento 1-wire: nós puxamos pra baixo, soltamos, e o sensor responde
+  // no mesmo fio — sem trocar o roteamento no meio da captura. Vem DEPOIS do rmt_config porque
+  // ele deixa o pino como entrada pura; mudar a direção preserva a rota da matriz GPIO.
+  gpio_set_direction(static_cast<gpio_num_t>(DHT_PIN), GPIO_MODE_INPUT_OUTPUT_OD);
+  gpio_set_pull_mode(static_cast<gpio_num_t>(DHT_PIN), GPIO_PULLUP_ONLY);
+  gpio_set_level(static_cast<gpio_num_t>(DHT_PIN), 1);
+  return true;
+}
+
+static bool dhtRmtRead(float& temp, float& hum) {
+  if (!dhtRingbuf) return false;
+
+  // Start: segura a linha baixa (datasheet pede >= 1ms) e só então liga a captura — ligar antes
+  // faria o próprio pulso de start, mais longo que o idle_threshold, fechar um quadro vazio.
+  gpio_set_level(static_cast<gpio_num_t>(DHT_PIN), 0);
+  delayMicroseconds(1200);
+  rmt_rx_start(DHT_RMT_CHANNEL, true);
+  gpio_set_level(static_cast<gpio_num_t>(DHT_PIN), 1);  // solta; o pull-up sobe e o sensor responde
+
+  size_t bytes = 0;
+  rmt_item32_t* items = static_cast<rmt_item32_t*>(xRingbufferReceive(dhtRingbuf, &bytes, pdMS_TO_TICKS(50)));
+  rmt_rx_stop(DHT_RMT_CHANNEL);
+  if (!items) return false;  // sensor mudo: a task esperou BLOQUEADA, sem segurar interrupção
+
+  uint16_t highs[64];
+  int n = 0;
+  const size_t count = bytes / sizeof(rmt_item32_t);
+  for (size_t i = 0; i < count && n < 64; i++) {
+    if (items[i].level0 && items[i].duration0 >= 10 && items[i].duration0 <= 110) highs[n++] = items[i].duration0;
+    if (n < 64 && items[i].level1 && items[i].duration1 >= 10 && items[i].duration1 <= 110) highs[n++] = items[i].duration1;
+  }
+  vRingbufferReturnItem(dhtRingbuf, items);
+
+  Dht22Sample sample = decodeDht22(highs, n);
+  if (!sample.ok) return false;
+  temp = sample.temp;
+  hum = sample.hum;
+  return true;
+}
 
 // --- Breadcrumb de crash (ver net.h) -------------------------------------------------------
 // RTC_NOINIT_ATTR nao e zerada por reset de watchdog/panic — so o power-on chega com lixo, dai
@@ -77,9 +146,8 @@ static bool readDht(float& temp, float& hum) {
   int n = 0;
   // ponytail: até 5 tentativas p/ conseguir 3 amostras válidas (NaN some ~5% das vezes).
   for (int attempt = 0; attempt < 5 && n < 3; attempt++) {
-    float h = dht.readHumidity();
-    float t = dht.readTemperature();
-    if (!isnan(t) && !isnan(h)) {
+    float t = NAN, h = NAN;
+    if (dhtRmtRead(t, h)) {
       temps[n] = t;
       hums[n] = h;
       n++;
@@ -383,7 +451,8 @@ static const uint32_t STUCK_RESTART_MS = 30 * 60 * 1000;
 static void task(void* pvParameters) {
   QueueHandle_t uiQueue = static_cast<QueueHandle_t>(pvParameters);
   esp_task_wdt_add(NULL);
-  dht.begin();  // faltava — sem isso a lib nunca configura o pino, toda leitura dá NaN
+  if (!dhtRmtBegin()) Serial.println("[dht] RMT nao inicializou — leituras vao falhar");
+  if (!dht22SelfTest()) Serial.println("[dht] AUTOTESTE DO DECODIFICADOR FALHOU");
 
   // ponytail: log temporário de diagnóstico — remover depois de confirmar a causa do bug
   // "offset não sobrevive ao restart em sensor já configurado" (ver conversa/relato).
