@@ -10,6 +10,8 @@ export interface DeviceCardData {
   humidity: number | null;
   rssi: number | null;
   reading_time: string | null;
+  temp_max: number | null;
+  hum_max: number | null;
 }
 
 // Faixa aproximada dBm -> barras de sinal (4 = ótimo, 0 = péssimo). Sem hardware de referência

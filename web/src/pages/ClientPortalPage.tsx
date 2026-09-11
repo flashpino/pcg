@@ -20,14 +20,9 @@ export function ClientPortalPage({ apiBase = '/api/client' }: { apiBase?: string
 
   if (openSensorId !== null) {
     const sensor = sensors.find((s) => s.id === openSensorId);
-    return (
-      <ClientSensorDetailPage
-        sensorId={openSensorId}
-        sensorName={sensor?.local ?? sensor?.name ?? ''}
-        onBack={() => setOpenSensorId(null)}
-        apiBase={apiBase}
-      />
-    );
+    if (sensor) {
+      return <ClientSensorDetailPage sensor={sensor} onBack={() => setOpenSensorId(null)} apiBase={apiBase} />;
+    }
   }
 
   return (

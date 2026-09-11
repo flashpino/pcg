@@ -172,6 +172,8 @@ describe('buildDeviceView', () => {
       online: true,
       online_since: '2026-01-01T10:00:00.000Z',
       hardware_fault: false,
+      temp_max: null,
+      hum_max: null,
       temperature: 23.4,
       humidity: 55,
       rssi: -28,

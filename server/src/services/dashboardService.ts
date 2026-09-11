@@ -78,12 +78,17 @@ export interface DeviceView extends DisplayReading {
   online: boolean;
   online_since: string | null;
   hardware_fault: boolean;
+  temp_max: number | null;
+  hum_max: number | null;
 }
 
 // "Card" de dispositivo — mesma forma usada pelo Dashboard admin e pelo Portal do Cliente, pra
 // os dois nunca divergirem (cada um só filtra os sensores que pode ver antes de chamar isto).
 export function buildDeviceView(
-  sensor: Pick<Sensor, 'id' | 'name' | 'local' | 'mac' | 'last_seen_at' | 'offline_after_seconds' | 'created_at'>,
+  sensor: Pick<
+    Sensor,
+    'id' | 'name' | 'local' | 'mac' | 'last_seen_at' | 'offline_after_seconds' | 'created_at' | 'temp_max' | 'hum_max'
+  >,
   now: number,
   opts: {
     reading?: { temperature: number | null; humidity: number | null; rssi: number | null; time: string };
@@ -100,6 +105,8 @@ export function buildDeviceView(
     online,
     online_since: online ? resolveOnlineSince(sensor, opts.lastResolvedAt) : null,
     hardware_fault: opts.hardwareFault,
+    temp_max: sensor.temp_max,
+    hum_max: sensor.hum_max,
     ...readingForDisplay(opts.reading, online, opts.hardwareFault),
   };
 }
