@@ -5,6 +5,7 @@ import fastifyStatic from '@fastify/static';
 import Fastify from 'fastify';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
+import { isAuthorized, isPublicRoute } from './authz.js';
 import { migrate, pool, seedAdmin, seedMessageTemplates, seedSettings } from './db/index.js';
 import { adminsRoutes } from './routes/admins.js';
 import { alertsRoutes } from './routes/alerts.js';
@@ -19,6 +20,8 @@ import { messageTemplatesRoutes } from './routes/messageTemplates.js';
 import { provisionRoutes } from './routes/provision.js';
 import { sensorsRoutes } from './routes/sensors.js';
 import { settingsRoutes } from './routes/settings.js';
+import { supervisorPortalRoutes } from './routes/supervisorPortal.js';
+import { supervisorsRoutes } from './routes/supervisors.js';
 import { twilioRoutes } from './routes/twilio.js';
 import { startConnectivitySweep } from './services/connectivitySweep.js';
 import { getEvolutionConnectionState, startNotifier } from './services/notifier.js';
@@ -38,24 +41,6 @@ if (missing.length > 0) {
   process.exit(1);
 }
 
-// Rotas /api/* públicas: sem cookie/JWT exigido. Tudo fora de /api (shell do painel,
-// assets estáticos) é público por padrão — a SPA decide mostrar login via /api/auth/me.
-const PUBLIC_API_ROUTES = ['/api/auth/login', '/api/client/login', '/api/ingest', '/api/provision', '/api/device/test'];
-const isPublic = (url: string) => {
-  const path = url.split('?')[0];
-  if (!path.startsWith('/api/')) return true;
-  return PUBLIC_API_ROUTES.includes(path) || path.startsWith('/api/ota/') || path.startsWith('/api/twilio/');
-};
-
-// Autorização por role, além da autenticação (jwtVerify): token de cliente só abre rotas
-// /api/client/*, token de admin abre todo o resto. Token sem `role` (sessões de admin já
-// abertas antes deste milestone) é tratado como admin — retrocompatível, sem forçar logout.
-function isAuthorized(path: string, role: string | undefined): boolean {
-  const isClientRoute = path.startsWith('/api/client/');
-  if (isClientRoute) return role === 'client';
-  return role === undefined || role === 'admin';
-}
-
 const app = Fastify({ logger: true });
 
 await app.register(cookie);
@@ -70,7 +55,7 @@ app.setErrorHandler((err: Error & { statusCode?: number }, req, reply) => {
 
 app.addHook('onRequest', async (req, reply) => {
   const url = req.raw.url ?? '';
-  if (isPublic(url)) return;
+  if (isPublicRoute(url)) return;
   try {
     await req.jwtVerify();
   } catch {
@@ -100,6 +85,8 @@ await app.register(contactsRoutes);
 await app.register(dashboardRoutes);
 await app.register(adminsRoutes);
 await app.register(clientPortalRoutes);
+await app.register(supervisorsRoutes);
+await app.register(supervisorPortalRoutes);
 await app.register(messageTemplatesRoutes);
 await app.register(settingsRoutes);
 await app.register(provisionRoutes);

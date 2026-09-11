@@ -189,3 +189,20 @@ CREATE TABLE IF NOT EXISTS app_settings (
   key TEXT PRIMARY KEY,
   value TEXT
 );
+
+-- Acesso de supervisor (só-leitura): igual ao portal do cliente, mas o admin escolhe um
+-- conjunto arbitrário de sensores (não necessariamente de um único cliente) em vez de "todos
+-- os sensores do cliente X" — ver supervisor_sensors abaixo e routes/supervisorPortal.ts.
+CREATE TABLE IF NOT EXISTS supervisors (
+  id SERIAL PRIMARY KEY, name TEXT NOT NULL,
+  email TEXT UNIQUE, password_hash TEXT,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- ON DELETE CASCADE dos dois lados: remover um supervisor ou um sensor não deve deixar
+-- atribuição órfã pra alguém ter que limpar à mão depois.
+CREATE TABLE IF NOT EXISTS supervisor_sensors (
+  supervisor_id INT NOT NULL REFERENCES supervisors(id) ON DELETE CASCADE,
+  sensor_id INT NOT NULL REFERENCES sensors(id) ON DELETE CASCADE,
+  PRIMARY KEY (supervisor_id, sensor_id)
+);

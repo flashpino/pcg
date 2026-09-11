@@ -96,6 +96,77 @@ export const setClientCredentials = (id: number, email: string, passwordHash: st
     ])
     .then((r) => r.rows[0]);
 
+export interface Supervisor {
+  id: number;
+  name: string;
+  email: string | null;
+  created_at: string;
+}
+
+// Nunca inclui password_hash — mesmo motivo do CLIENT_COLS acima.
+const SUPERVISOR_COLS = 'id, name, email, created_at';
+
+export const listSupervisors = () =>
+  pool.query<Supervisor>(`SELECT ${SUPERVISOR_COLS} FROM supervisors ORDER BY name`).then((r) => r.rows);
+
+export const getSupervisor = (id: number) =>
+  pool.query<Supervisor>(`SELECT ${SUPERVISOR_COLS} FROM supervisors WHERE id = $1`, [id]).then((r) => r.rows[0]);
+
+export const createSupervisor = (name: string) =>
+  pool
+    .query<Supervisor>(`INSERT INTO supervisors (name) VALUES ($1) RETURNING ${SUPERVISOR_COLS}`, [name])
+    .then((r) => r.rows[0]);
+
+export const updateSupervisor = (id: number, name: string) =>
+  pool
+    .query<Supervisor>(`UPDATE supervisors SET name = $2 WHERE id = $1 RETURNING ${SUPERVISOR_COLS}`, [id, name])
+    .then((r) => r.rows[0]);
+
+export const deleteSupervisor = (id: number) =>
+  pool.query('DELETE FROM supervisors WHERE id = $1', [id]).then((r) => r.rowCount! > 0);
+
+// Uso exclusivo do login do portal (server-side) — só aqui o password_hash sai do banco.
+export const getSupervisorByEmail = (email: string) =>
+  pool
+    .query<Supervisor & { password_hash: string | null }>('SELECT * FROM supervisors WHERE email = $1', [email])
+    .then((r) => r.rows[0]);
+
+export const setSupervisorCredentials = (id: number, email: string, passwordHash: string) =>
+  pool
+    .query<Supervisor>(`UPDATE supervisors SET email = $2, password_hash = $3 WHERE id = $1 RETURNING ${SUPERVISOR_COLS}`, [
+      id,
+      email,
+      passwordHash,
+    ])
+    .then((r) => r.rows[0]);
+
+export const getSupervisorSensorIds = (supervisorId: number) =>
+  pool
+    .query<{ sensor_id: number }>('SELECT sensor_id FROM supervisor_sensors WHERE supervisor_id = $1', [supervisorId])
+    .then((r) => r.rows.map((row) => row.sensor_id));
+
+// Substitui o conjunto inteiro de sensores atribuídos numa transação — mais simples que diff
+// de add/remove, e a UI (checkboxes) sempre manda a lista completa de qualquer forma.
+export const setSupervisorSensors = async (supervisorId: number, sensorIds: number[]) => {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query('DELETE FROM supervisor_sensors WHERE supervisor_id = $1', [supervisorId]);
+    for (const sensorId of sensorIds) {
+      await client.query('INSERT INTO supervisor_sensors (supervisor_id, sensor_id) VALUES ($1, $2)', [
+        supervisorId,
+        sensorId,
+      ]);
+    }
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
+};
+
 export interface Sensor {
   id: number;
   client_id: number | null;
@@ -144,6 +215,10 @@ export const listSensors = (clientId?: number) =>
 
 export const getSensor = (id: number) =>
   pool.query<Sensor>('SELECT * FROM sensors WHERE id = $1', [id]).then((r) => r.rows[0]);
+
+// Usado pelo portal do supervisor — conjunto arbitrário de sensores (não um único client_id).
+export const listSensorsByIds = (ids: number[]) =>
+  pool.query<Sensor>('SELECT * FROM sensors WHERE id = ANY($1) ORDER BY name', [ids]).then((r) => r.rows);
 
 export interface SensorUpdate {
   client_id?: number | null;
@@ -439,6 +514,16 @@ export const listAlertsByClient = (clientId: number, limit = 50) =>
        WHERE s.client_id = $1 ORDER BY a.fired_at DESC LIMIT $2`,
       [clientId, limit],
     )
+    .then((r) => r.rows);
+
+// Alertas dos sensores atribuídos a um supervisor — mesmo formato de listAlertsByClient, mas
+// escopado por um conjunto arbitrário de sensor_id em vez de client_id.
+export const listAlertsBySensorIds = (sensorIds: number[], limit = 50) =>
+  pool
+    .query<Alert>('SELECT * FROM alerts WHERE sensor_id = ANY($1) ORDER BY fired_at DESC LIMIT $2', [
+      sensorIds,
+      limit,
+    ])
     .then((r) => r.rows);
 
 // Qualquer alerta em curso nos sensores do cliente — a mensagem diária de "está tudo bem" não
