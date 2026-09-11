@@ -12,20 +12,22 @@ interface Props {
   sensorId: number;
   sensorName: string;
   onBack: () => void;
+  apiBase?: string;
 }
 
 // Tela dedicada ao datalog de um único sensor — separada da lista, ao contrário do gráfico
 // inline do painel admin (SensorsPage), porque o cliente clica no card pra "entrar" no sensor.
-export function ClientSensorDetailPage({ sensorId, sensorName, onBack }: Props) {
+// apiBase reaproveita esta tela no portal do supervisor (/api/supervisor em vez de /api/client).
+export function ClientSensorDetailPage({ sensorId, sensorName, onBack, apiBase = '/api/client' }: Props) {
   const [readings, setReadings] = useState<ReadingPoint[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     api
-      .get<ReadingPoint[]>(`/api/client/sensors/${sensorId}/readings?range=24h`)
+      .get<ReadingPoint[]>(`${apiBase}/sensors/${sensorId}/readings?range=24h`)
       .then(setReadings)
       .catch((err) => setError(err.message));
-  }, [sensorId]);
+  }, [sensorId, apiBase]);
 
   return (
     <main>

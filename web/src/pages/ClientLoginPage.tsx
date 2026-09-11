@@ -1,7 +1,21 @@
 import { useState } from 'react';
 import { api } from '../api.js';
 
-export function ClientLoginPage({ onLoggedIn }: { onLoggedIn: () => void }) {
+interface Props {
+  onLoggedIn: () => void;
+  loginPath?: string;
+  brandLabel?: string;
+  title?: string;
+}
+
+// Reaproveitado pelo portal do supervisor (mesma tela, só troca o endpoint e os textos) —
+// ver SupervisorPortalApp.tsx.
+export function ClientLoginPage({
+  onLoggedIn,
+  loginPath = '/api/client/login',
+  brandLabel = 'Proatus — Portal do Cliente',
+  title = 'Acesso do Cliente',
+}: Props) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -10,7 +24,7 @@ export function ClientLoginPage({ onLoggedIn }: { onLoggedIn: () => void }) {
     e.preventDefault();
     setError(null);
     try {
-      await api.post('/api/client/login', { email, password });
+      await api.post(loginPath, { email, password });
       onLoggedIn();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'falha no login');
@@ -22,10 +36,10 @@ export function ClientLoginPage({ onLoggedIn }: { onLoggedIn: () => void }) {
       <div className="login-card">
         <div className="login-card-header">
           <img src="/logo.png" alt="Proatus" className="brand-logo" />
-          <p>Proatus — Portal do Cliente</p>
+          <p>{brandLabel}</p>
         </div>
         <div className="login-card-body">
-          <h2>Acesso do Cliente</h2>
+          <h2>{title}</h2>
           <p>Insira suas credenciais para continuar</p>
           {error && <p className="error">{error}</p>}
           <form onSubmit={submit}>
@@ -60,7 +74,7 @@ export function ClientLoginPage({ onLoggedIn }: { onLoggedIn: () => void }) {
             </button>
           </form>
         </div>
-        <div className="login-card-footer">Proatus — Portal do Cliente</div>
+        <div className="login-card-footer">{brandLabel}</div>
       </div>
     </main>
   );

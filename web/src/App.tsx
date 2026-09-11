@@ -8,11 +8,13 @@ import { FirmwarePage } from './pages/FirmwarePage.js';
 import { LoginPage } from './pages/LoginPage.js';
 import { MessagesPage } from './pages/MessagesPage.js';
 import { SensorsPage } from './pages/SensorsPage.js';
+import { SupervisorsPage } from './pages/SupervisorsPage.js';
 
 const TABS = [
   { id: 'dashboard', label: 'Dashboard', Page: DashboardPage },
   { id: 'clients', label: 'Clientes', Page: ClientsPage },
   { id: 'sensors', label: 'Sensores', Page: SensorsPage },
+  { id: 'supervisors', label: 'Supervisores', Page: SupervisorsPage },
   { id: 'alerts', label: 'Alertas', Page: AlertsPage },
   { id: 'firmware', label: 'Firmware', Page: FirmwarePage },
   { id: 'messages', label: 'Mensagens', Page: MessagesPage },
