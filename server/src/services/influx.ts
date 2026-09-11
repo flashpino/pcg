@@ -110,15 +110,30 @@ export async function queryLatestReadings(sensorIds: number[]): Promise<Map<numb
       |> group(columns: ["sensor_id"])
       |> pivot(rowKey: ["_time"], columnKey: ["_field"], valueColumn: "_value")
   `;
-  await getApis().query.collectRows(flux, (values, tableMeta) => {
-    const row = tableMeta.toObject(values) as Record<string, unknown>;
-    result.set(Number(row.sensor_id), {
-      temperature: (row.temperature as number) ?? null,
-      humidity: (row.humidity as number) ?? null,
-      rssi: (row.rssi as number) ?? null,
-      time: row._time as string,
+  try {
+    await getApis().query.collectRows(flux, (values, tableMeta) => {
+      const row = tableMeta.toObject(values) as Record<string, unknown>;
+      result.set(Number(row.sensor_id), {
+        temperature: (row.temperature as number) ?? null,
+        humidity: (row.humidity as number) ?? null,
+        rssi: (row.rssi as number) ?? null,
+        time: row._time as string,
+      });
+      return null;
     });
-    return null;
-  });
+  } catch (err) {
+    // Influx fora não pode apagar o painel. Os 9 pontos que chamam isto (dashboard, portal do
+    // cliente, card do sensor, teste de contato, mensagens de conectividade) já tratam ausência
+    // de leitura como caso normal — sensor recém-provisionado cai no mesmo lugar, e
+    // connectivityVars documenta '--' como o valor esperado. Sem esta guarda um host de Influx
+    // que não resolve derrubava GET /api/dashboard inteiro em 500, e o operador não via NADA:
+    // nem lista de sensores, nem alertas, nem quem está offline — tudo isso vem do Postgres e
+    // esteve disponível o tempo todo. Perder o número da temperatura é degradação; perder a
+    // tela é apagão (incidente de 2026-09-11, ENOTFOUND no host do Influx).
+    //
+    // Só o caminho de LEITURA afrouxa. flushInflux continua estourando de propósito: é o 500
+    // dele que faz o device guardar o lote e reenviar, em vez de dar a leitura por entregue.
+    console.error('[influx] leitura recente indisponível:', err instanceof Error ? err.message : err);
+  }
   return result;
 }
