@@ -83,7 +83,11 @@ export function ClientSensorDetailPage({ sensor, onBack, apiBase = '/api/client'
         <ResponsiveContainer width="100%" height={300}>
           <LineChart data={chartData}>
             <CartesianGrid strokeDasharray="3 3" />
-            <XAxis dataKey="time" tick={false} />
+            <XAxis
+              dataKey="time"
+              tickFormatter={(t) => new Date(t).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+              minTickGap={40}
+            />
             <YAxis />
             <Tooltip labelFormatter={(t) => new Date(t).toLocaleString('pt-BR')} />
             {sensor.temp_max !== null && (
@@ -94,8 +98,7 @@ export function ClientSensorDetailPage({ sensor, onBack, apiBase = '/api/client'
                 label={{ value: `Limite: ${sensor.temp_max}°C`, position: 'right', fill: '#dc2626', fontSize: 11 }}
               />
             )}
-            <Line type="monotone" dataKey="temperature" stroke="#f97316" dot={false} name="Temp °C" />
-            <Line type="monotone" dataKey="humidity" stroke="#3b82f6" dot={false} name="Umidade %" />
+            <Line type="monotone" dataKey="temperature" stroke="#f97316" dot={{ r: 3 }} name="Temp °C" />
           </LineChart>
         </ResponsiveContainer>
       </div>
