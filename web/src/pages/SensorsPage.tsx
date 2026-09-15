@@ -262,12 +262,14 @@ export function SensorsPage() {
                   <span className="range-inputs">
                     <input
                       type="number"
+                      step="any"
                       defaultValue={s.temp_min ?? ''}
                       onBlur={(e) => patch(s, { temp_min: numberOrNull(e.target.value) })}
                     />
                     <span>–</span>
                     <input
                       type="number"
+                      step="any"
                       defaultValue={s.temp_max ?? ''}
                       onBlur={(e) => patch(s, { temp_max: numberOrNull(e.target.value) })}
                     />
@@ -280,12 +282,14 @@ export function SensorsPage() {
                   <span className="range-inputs">
                     <input
                       type="number"
+                      step="any"
                       defaultValue={s.hum_min ?? ''}
                       onBlur={(e) => patch(s, { hum_min: numberOrNull(e.target.value) })}
                     />
                     <span>–</span>
                     <input
                       type="number"
+                      step="any"
                       defaultValue={s.hum_max ?? ''}
                       onBlur={(e) => patch(s, { hum_max: numberOrNull(e.target.value) })}
                     />
