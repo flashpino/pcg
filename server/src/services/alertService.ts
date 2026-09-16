@@ -186,7 +186,7 @@ async function notifyContacts(
         continue;
       }
       if (kind === 'renotify') {
-        const last = await getLastNotification(alert.id, contact.id, 'whatsapp');
+        const last = await getLastNotification(alert.id, contact.id, channel);
         if (!shouldRenotify(last ? new Date(last.created_at) : null, pref.renotify_minutes, now)) continue;
       }
 

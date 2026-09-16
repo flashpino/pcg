@@ -504,6 +504,27 @@ describe('evaluateConnectivity — fire e renotify', () => {
 
     expect(enqueueWhatsapp).not.toHaveBeenCalled();
   });
+
+  // Bug real: o cooldown de renotify checava sempre a última notificação de 'whatsapp', mesmo
+  // pra iteração de 'telegram' do mesmo loop. Contato com WhatsApp desligado gera skipped_channel
+  // (uma notification com created_at=agora); o Telegram do mesmo contato/alerta lia esse registro
+  // "recente" como se fosse dele e nunca reenviava — exatamente o cenário "WhatsApp caiu, usa
+  // Telegram" que a feature existe pra cobrir. Cada canal precisa do seu próprio relógio.
+  it('renotify do telegram não é bloqueado pelo histórico do whatsapp (canais com cooldown independente)', async () => {
+    vi.mocked(queries.getFiringAlert).mockResolvedValue({ id: 70 } as queries.Alert);
+    vi.mocked(queries.listContacts).mockResolvedValue([
+      { ...contatoAtivo, channel_whatsapp: false, channel_telegram: true, telegram_chat_id: '999888777' },
+    ]);
+    vi.mocked(queries.listContactAlertPrefsByClient).mockResolvedValue([prefLiberada('connectivity')]);
+    vi.mocked(queries.getLastNotification).mockImplementation(async (_alertId, _contactId, channel) =>
+      channel === 'whatsapp' ? ({ created_at: new Date().toISOString() } as never) : (undefined as never),
+    );
+    vi.mocked(queries.createNotification).mockResolvedValue({ id: 3 } as never);
+
+    await evaluateConnectivity(sensor, true);
+
+    expect(enqueueTelegram).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe('sendTest', () => {

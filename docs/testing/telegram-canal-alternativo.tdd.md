@@ -34,7 +34,7 @@ Depois: Cada contato ganha um canal `channel_telegram` (booleano) com correspond
 
 | # | O que é garantido | Teste | Tipo | Resultado |
 |---|---|---|---|---|
-| 1 | Colunas `channel_telegram`, `telegram_chat_id`, `telegram_link_token` existem em `contacts` | `server/src/db/schema.test.ts` (Task 1: migration verifica schema) | integration | PASS |
+| 1 | Colunas `channel_telegram`, `telegram_chat_id`, `telegram_link_token` existem em `contacts` | — | integration | não testado diretamente — `schema.sql` é idempotente (`ADD COLUMN IF NOT EXISTS`), validado implicitamente por toda a suíte rodar (`migrate()` executa no boot dos testes que usam DB real, e nenhum teste unitário depende de uma coluna que não existisse). `server/src/db/schema.test.ts` existe mas seus 3 testes cobrem outra coisa (duplicação de constraint, cobertura de tipo de `contact_alert_prefs`, FK de `notifications.contact_id`) e não foi modificado por esta feature — citá-lo como PASS desta linha era incorreto |
 | 2 | Tipos `Contact`/`ContactInput` incluem novos campos; `Notification.channel` ganha `'telegram'` | `server/src/services/alertService.test.ts` (fixture `contatoAtivo` compila) | unit | PASS |
 | 3 | `setTelegramLinkToken(id, token)` salva token no banco | `server/src/routes/contacts.test.ts:"gera token, grava e devolve a URL"` | integration | PASS |
 | 4 | `getContactByTelegramToken(token)` recupera contato por token | `server/src/routes/telegramWebhook.test.ts:"token válido vincula o chat_id"` | integration | PASS |

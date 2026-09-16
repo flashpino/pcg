@@ -102,6 +102,10 @@ async function sendTelegram(job: NotifyJob): Promise<void> {
 // chamado de novo com a mesma URL sem efeito colateral (mesmo espírito de migrate()/seedSettings()).
 export async function registerTelegramWebhook(): Promise<void> {
   if (!process.env.TELEGRAM_BOT_TOKEN) return;
+  if (!process.env.TELEGRAM_WEBHOOK_SECRET) {
+    console.error('TELEGRAM_BOT_TOKEN setado sem TELEGRAM_WEBHOOK_SECRET — webhook do Telegram não registrado');
+    return;
+  }
   try {
     const res = await fetch(`https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/setWebhook`, {
       method: 'POST',

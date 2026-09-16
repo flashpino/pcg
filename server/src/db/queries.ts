@@ -319,10 +319,20 @@ export const getContact = (id: number) =>
 export const createContact = async (input: ContactInput): Promise<Contact> => {
   const contact = await pool
     .query<Contact>(
-      `INSERT INTO contacts (client_id, name, phone, channel_voice, channel_whatsapp, timezone, active)
-       VALUES ($1, $2, $3, COALESCE($4, true), COALESCE($5, true), COALESCE($6, 'America/Sao_Paulo'), COALESCE($7, true))
+      `INSERT INTO contacts (client_id, name, phone, channel_voice, channel_whatsapp, channel_telegram, telegram_chat_id, timezone, active)
+       VALUES ($1, $2, $3, COALESCE($4, true), COALESCE($5, true), COALESCE($6, false), $7, COALESCE($8, 'America/Sao_Paulo'), COALESCE($9, true))
        RETURNING *`,
-      [input.client_id, input.name, input.phone, input.channel_voice, input.channel_whatsapp, input.timezone, input.active],
+      [
+        input.client_id,
+        input.name,
+        input.phone,
+        input.channel_voice,
+        input.channel_whatsapp,
+        input.channel_telegram,
+        input.telegram_chat_id,
+        input.timezone,
+        input.active,
+      ],
     )
     .then((r) => r.rows[0]);
 

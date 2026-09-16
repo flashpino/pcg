@@ -135,6 +135,17 @@ describe('registerTelegramWebhook', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it('não chama a Bot API quando TELEGRAM_WEBHOOK_SECRET não está setado (webhook sem secret seria rejeitado por si mesmo)', async () => {
+    vi.stubEnv('TELEGRAM_BOT_TOKEN', '123:abc');
+    vi.stubEnv('TELEGRAM_WEBHOOK_SECRET', '');
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    await registerTelegramWebhook();
+
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it('registra o webhook na Bot API com a URL e o secret certos', async () => {
     vi.stubEnv('TELEGRAM_BOT_TOKEN', '123:abc');
     vi.stubEnv('PUBLIC_URL', 'https://proatus.app');
