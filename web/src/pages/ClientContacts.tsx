@@ -8,6 +8,8 @@ interface Contact {
   phone: string;
   channel_voice: boolean;
   channel_whatsapp: boolean;
+  channel_telegram: boolean;
+  telegram_chat_id: string | null;
   timezone: string;
   active: boolean;
 }
@@ -47,7 +49,18 @@ function emptyPrefs(): Record<AlertType, AlertPref> {
 }
 
 function emptyForm(clientId: number) {
-  return { client_id: clientId, name: '', phone: '', channel_voice: true, channel_whatsapp: true, timezone: 'America/Sao_Paulo', active: true, welcome: false };
+  return {
+    client_id: clientId,
+    name: '',
+    phone: '',
+    channel_voice: true,
+    channel_whatsapp: true,
+    channel_telegram: false,
+    telegram_chat_id: '',
+    timezone: 'America/Sao_Paulo',
+    active: true,
+    welcome: false,
+  };
 }
 
 // O Postgres devolve TIME como 'HH:MM:SS' e <input type="time"> sem step= descarta o valor com
@@ -152,6 +165,7 @@ export function ClientContacts({ clientId }: { clientId: number }) {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [form, setForm] = useState(emptyForm(clientId));
   const [prefs, setPrefs] = useState<Record<AlertType, AlertPref>>(emptyPrefs());
+  const [telegramLink, setTelegramLink] = useState<string | null>(null);
 
   function load() {
     api.get<Contact[]>(`/api/contacts?clientId=${clientId}`).then(setContacts).catch((err) => setError(err.message));
@@ -161,7 +175,8 @@ export function ClientContacts({ clientId }: { clientId: number }) {
 
   async function edit(c: Contact) {
     setEditingId(c.id);
-    setForm({ ...c, welcome: false });
+    setForm({ ...c, telegram_chat_id: c.telegram_chat_id ?? '', welcome: false });
+    setTelegramLink(null);
     const rows = await api.get<AlertPref[]>(`/api/contacts/${c.id}/alert-prefs`);
     const byType = emptyPrefs();
     for (const row of rows) byType[row.alert_type] = row;
@@ -172,6 +187,7 @@ export function ClientContacts({ clientId }: { clientId: number }) {
     setEditingId(null);
     setForm(emptyForm(clientId));
     setPrefs(emptyPrefs());
+    setTelegramLink(null);
   }
 
   async function submit(e: React.FormEvent) {
@@ -206,6 +222,12 @@ export function ClientContacts({ clientId }: { clientId: number }) {
     window.alert('Teste enfileirado.');
   }
 
+  async function generateTelegramLink() {
+    if (!editingId) return;
+    const { url } = await api.post<{ url: string }>(`/api/contacts/${editingId}/telegram-link`);
+    setTelegramLink(url);
+  }
+
   return (
     <div>
       {error && <p className="error">{error}</p>}
@@ -234,9 +256,37 @@ export function ClientContacts({ clientId }: { clientId: number }) {
             whatsapp
           </label>
           <label>
+            <input
+              type="checkbox"
+              checked={form.channel_telegram}
+              onChange={(e) => setForm((f) => ({ ...f, channel_telegram: e.target.checked }))}
+            />{' '}
+            telegram
+          </label>
+          <label>
             <input type="checkbox" checked={form.active} onChange={(e) => setForm((f) => ({ ...f, active: e.target.checked }))} />{' '}
             <strong>Contato ativo</strong>
           </label>
+        </div>
+        <div className="inline">
+          <label>
+            chat_id do Telegram{' '}
+            <input
+              placeholder="colar manualmente, ou gerar link abaixo"
+              value={form.telegram_chat_id}
+              onChange={(e) => setForm((f) => ({ ...f, telegram_chat_id: e.target.value }))}
+            />
+          </label>
+          {editingId && (
+            <button type="button" className="secondary" onClick={generateTelegramLink}>
+              Gerar link de convite
+            </button>
+          )}
+          {telegramLink && (
+            <small>
+              Envie ao contato: <a href={telegramLink} target="_blank" rel="noreferrer">{telegramLink}</a>
+            </small>
+          )}
         </div>
 
         <h3>Preferências de alertas</h3>
