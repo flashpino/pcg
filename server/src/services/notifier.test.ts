@@ -1,10 +1,19 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+
+const mocks = vi.hoisted(() => ({
+  getSetting: vi.fn(async (_key: string) => null as string | null),
+}));
+
+// getEvolutionConnectionState agora consulta app_settings (instância trocável pelo painel sem
+// redeploy) antes de cair pra env — precisa mockar pra não bater no banco real neste teste.
+vi.mock('../db/queries.js', () => ({ getSetting: mocks.getSetting }));
+
 import { getEvolutionConnectionState, spNow, voiceTwiml } from './notifier.js';
 
-// Sem mock nenhum: este arquivo testa só função pura, e desde que influx.ts passou a construir o
-// cliente sob demanda (getApis) importar a cadeia notifier -> alertService -> influx não dispara
-// mais conexão alguma. Se voltar a exigir mock aqui, é sinal de que alguém pôs efeito colateral no
-// corpo de um módulo de novo.
+// Sem mock de fetch/env fora do necessário: este arquivo testa só função pura, e desde que
+// influx.ts passou a construir o cliente sob demanda (getApis) importar a cadeia notifier ->
+// alertService -> influx não dispara mais conexão alguma. Se voltar a exigir mock aqui, é sinal de
+// que alguém pôs efeito colateral no corpo de um módulo de novo.
 
 describe('voiceTwiml', () => {
   it('põe pausa entre as frases do alerta', () => {
@@ -53,7 +62,11 @@ describe('spNow', () => {
 // Alimenta o indicador de WhatsApp do painel. Evolution fora do ar não pode derrubar a rota que
 // chama isto — qualquer falha vira 'error', que a UI mostra como desconectado.
 describe('getEvolutionConnectionState', () => {
-  afterEach(() => vi.unstubAllGlobals());
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
+    mocks.getSetting.mockReset().mockResolvedValue(null);
+  });
 
   it('devolve o corpo da Evolution quando ela responde ok', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({ state: 'open' }) })));
@@ -71,5 +84,37 @@ describe('getEvolutionConnectionState', () => {
     vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('ECONNREFUSED'); }));
 
     expect(await getEvolutionConnectionState()).toEqual({ state: 'error' });
+  });
+
+  // Troca de instância pelo painel (sem mexer em código/env) — caso de uso: número bloqueado pela
+  // Meta, admin troca pra outra instância já configurada na Evolution.
+  it('usa a instância salva em app_settings, ignorando a env, quando existe', async () => {
+    vi.stubEnv('EVOLUTION_URL', 'http://evolution.local');
+    vi.stubEnv('EVOLUTION_INSTANCE', 'instancia-env-antiga');
+    mocks.getSetting.mockResolvedValue('instancia-nova');
+    const fetchMock = vi.fn(async () => ({ ok: true, json: async () => ({ state: 'open' }) }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await getEvolutionConnectionState();
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://evolution.local/instance/connectionState/instancia-nova',
+      expect.anything(),
+    );
+  });
+
+  it('cai para EVOLUTION_INSTANCE (env) quando não há instância salva no banco', async () => {
+    vi.stubEnv('EVOLUTION_URL', 'http://evolution.local');
+    vi.stubEnv('EVOLUTION_INSTANCE', 'instancia-env');
+    mocks.getSetting.mockResolvedValue(null);
+    const fetchMock = vi.fn(async () => ({ ok: true, json: async () => ({ state: 'open' }) }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await getEvolutionConnectionState();
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://evolution.local/instance/connectionState/instancia-env',
+      expect.anything(),
+    );
   });
 });
