@@ -1,4 +1,5 @@
 import type { FastifyInstance } from 'fastify';
+import { randomUUID } from 'node:crypto';
 import {
   createContact,
   createNotification,
@@ -10,6 +11,7 @@ import {
   listContactAlertPrefs,
   listContacts,
   listSensors,
+  setTelegramLinkToken,
   updateContact,
   upsertContactAlertPref,
   type ContactAlertPref,
@@ -18,7 +20,7 @@ import {
 import { sendContactTest } from '../services/alertService.js';
 import { queryLatestReadings } from '../services/influx.js';
 import { renderTemplate } from '../services/messageTemplates.js';
-import { enqueueWhatsapp } from '../services/notifier.js';
+import { enqueueTelegram, enqueueWhatsapp } from '../services/notifier.js';
 
 // Boas-vindas/teste não são alertas reais, mas notifications.alert_id é NOT NULL — pendura
 // num alerta sintético já resolvido no primeiro sensor do cliente (Tasks 8/8b usam o mesmo padrão).
@@ -111,7 +113,30 @@ export async function contactsRoutes(app: FastifyInstance): Promise<void> {
       : (process.env.WELCOME_TEMPLATE ?? 'Olá %name%! Você foi cadastrado no monitoramento Proatus.').replace('%name%', contact.name);
     const notification = await createNotification(alert.id, contact.id, 'whatsapp', 'queued', 'welcome');
     await enqueueWhatsapp({ notificationId: notification.id, phone: contact.phone, text });
+    // Somado ao WhatsApp (que continua incondicional, sem checar channel_whatsapp, igual sempre
+    // foi) — só dispara se o contato já tiver Telegram ligado E vinculado (na maioria dos casos,
+    // cadastro novo, ainda não vinculou nada; dispara em boas-vindas reenviadas depois do link).
+    if (contact.channel_telegram && contact.telegram_chat_id) {
+      const tg = await createNotification(alert.id, contact.id, 'telegram', 'queued', 'welcome');
+      await enqueueTelegram({ notificationId: tg.id, phone: contact.telegram_chat_id, text });
+    }
     return { ok: true };
+  });
+
+  // Gera o link de convite (t.me/<bot>?start=<token>) pro admin mandar ao contato — vinculação
+  // manual (colar chat_id direto no cadastro) continua funcionando via PATCH normal, sem passar
+  // por aqui. Token de uso único, consumido pelo webhook (routes/telegramWebhook.ts) quando o
+  // contato dá /start no bot.
+  app.post<{ Params: { id: string } }>('/api/contacts/:id/telegram-link', async (req) => {
+    const contact = await getContact(Number(req.params.id));
+    if (!contact) throw Object.assign(new Error('contato não encontrado'), { statusCode: 404 });
+    if (!process.env.TELEGRAM_BOT_USERNAME) {
+      throw Object.assign(new Error('TELEGRAM_BOT_USERNAME não configurado'), { statusCode: 400 });
+    }
+
+    const token = randomUUID();
+    await setTelegramLinkToken(contact.id, token);
+    return { url: `https://t.me/${process.env.TELEGRAM_BOT_USERNAME}?start=${token}` };
   });
 
   // Respeita a pref dedicada 'test' do contato (liga/desliga, dias, janela de horário) — mesma
