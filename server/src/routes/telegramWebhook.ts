@@ -25,6 +25,8 @@ export async function telegramWebhookRoutes(app: FastifyInstance): Promise<void>
     const contact = await getContactByTelegramToken(match[1]);
     if (!contact) return reply.send();
 
+    if (!req.body?.message?.chat?.id) return reply.send();
+
     await linkTelegramChat(contact.id, String(req.body.message!.chat.id));
     reply.send();
   });

@@ -93,4 +93,20 @@ describe('POST /api/telegram/webhook', () => {
     expect(res.statusCode).toBe(200);
     expect(mocks.getContactByTelegramToken).not.toHaveBeenCalled();
   });
+
+  it('payload sem chat_id (valid secret + token match) responde 200 sem chamar linkTelegramChat', async () => {
+    mocks.getContactByTelegramToken.mockResolvedValue({ id: 5 });
+    const app = Fastify();
+    await app.register(telegramWebhookRoutes);
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/telegram/webhook',
+      headers: { 'x-telegram-bot-api-secret-token': SECRET },
+      payload: { message: { text: '/start tok-valido' } }, // sem chat key
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(mocks.linkTelegramChat).not.toHaveBeenCalled();
+  });
 });
