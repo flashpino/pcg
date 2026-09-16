@@ -63,6 +63,7 @@ export function SensorsPage() {
   const [calibReference, setCalibReference] = useState('');
   const [schedDow, setSchedDow] = useState('1');
   const [schedTime, setSchedTime] = useState('09:00');
+  const [evoInstance, setEvoInstance] = useState('');
 
   function load() {
     api.get<Sensor[]>('/api/sensors').then(setSensors).catch((err) => setError(err.message));
@@ -74,6 +75,10 @@ export function SensorsPage() {
         setSchedDow(s.dow);
         setSchedTime(s.time);
       })
+      .catch(() => {});
+    api
+      .get<{ instance: string }>('/api/settings/evolution-instance')
+      .then((s) => setEvoInstance(s.instance))
       .catch(() => {});
   }
 
@@ -185,6 +190,31 @@ export function SensorsPage() {
           >
             Salvar
           </button>
+        </div>
+      </div>
+
+      <div className="card" style={{ marginBottom: '1rem' }}>
+        <div className="inline">
+          <strong>Instância WhatsApp (Evolution API):</strong>
+          <label>
+            <input
+              type="text"
+              value={evoInstance}
+              onChange={(e) => setEvoInstance(e.target.value)}
+              placeholder="nome da instância"
+            />
+          </label>
+          <button
+            onClick={() =>
+              runMutation(
+                () => api.put('/api/settings/evolution-instance', { instance: evoInstance }),
+                'Instância salva.',
+              )
+            }
+          >
+            Salvar
+          </button>
+          <small>Trocar aqui em caso de bloqueio do número — não precisa mexer em código.</small>
         </div>
       </div>
 
