@@ -174,6 +174,23 @@ export function ClientContacts({ clientId }: { clientId: number }) {
 
   useEffect(load, [clientId]);
 
+  // Depois de gerar o link, o vínculo acontece no navegador do contato (webhook), sem nenhum
+  // aviso pro painel — sem isso, o admin só veria o chat_id preenchido dando F5 (que reseta a
+  // SPA pro dashboard, já que não há rota de URL pra "editando contato X"). Re-checa sozinho
+  // enquanto o link gerado estiver na tela; para assim que o vínculo aparecer ou a edição mudar.
+  useEffect(() => {
+    if (!telegramLink || !editingId) return;
+    const id = editingId;
+    const interval = setInterval(async () => {
+      const c = await api.get<Contact>(`/api/contacts/${id}`);
+      if (c.telegram_chat_id) {
+        setForm((f) => ({ ...f, channel_telegram: c.channel_telegram, telegram_chat_id: c.telegram_chat_id ?? '' }));
+        clearInterval(interval);
+      }
+    }, 3000);
+    return () => clearInterval(interval);
+  }, [telegramLink, editingId]);
+
   async function edit(c: Contact) {
     setEditingId(c.id);
     setForm({ ...c, telegram_chat_id: c.telegram_chat_id ?? '', welcome: false });
