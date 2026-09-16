@@ -51,7 +51,10 @@ bool isOtaUpdating();
 // QUE travou, nunca ONDE: o backtrace do panic morre no serial e nao ha USB no cliente. Cada
 // trecho bloqueante marca em que estava; o valor sobrevive ao reset (RTC RAM) e volta no
 // primeiro ingest do boot seguinte, dentro de `diag`.
-enum class Stage : uint8_t { IDLE, DHT, WIFI, INGEST, PROVISION, OTA, TEST, UI_TICK, UI_SCAN };
+// RESTART_* sao reboots deliberados (self-heal), nao travamentos: distinguem no `diag` um
+// device que nao conseguiu associar de um que associou mas nao alcanca a nuvem.
+enum class Stage : uint8_t { IDLE, DHT, WIFI, INGEST, PROVISION, OTA, TEST, UI_TICK, UI_SCAN,
+                             RESTART_WIFI, RESTART_SILENT };
 void mark(Stage s);    // task de rede (core 0)
 void markUi(Stage s);  // UI (core 1)
 

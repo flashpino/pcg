@@ -185,7 +185,13 @@ TestState consumeTestResult() {
 }
 
 static bool ensureConnected() {
-  if (WiFi.status() == WL_CONNECTED) return true;
+  // Zerar AQUI e nao so no laco de espata abaixo: o driver do ESP32 reassocia sozinho
+  // (autoReconnect e default) e a associacao tambem completa DEPOIS dos 8s que o laco
+  // espera — nos dois casos a conexao volta sem passar pelo unico ponto que zerava o
+  // contador. Ele ficava latcheado (ex.: 9) por horas com o device ONLINE, e a primeira
+  // falha isolada seguinte batia em 10 e reiniciava um dispositivo saudavel. E um contador
+  // de falhas CONSECUTIVAS: qualquer conexao observada quebra a sequencia.
+  if (WiFi.status() == WL_CONNECTED) { consecutiveFailures = 0; return true; }
   if (scanPaused) return false;  // UI escaneando — não disputa o rádio com WiFi.begin()
 
   storage::WifiCredentials creds = storage::loadWifiCredentials();
@@ -228,6 +234,7 @@ static bool ensureConnected() {
 
   consecutiveFailures++;
   if (consecutiveFailures >= 10) {
+    mark(Stage::RESTART_WIFI);  // sem isso o diag volta n2 (WIFI), igual ao restart de servidor mudo
     ESP.restart();
   }
   static const uint32_t BACKOFF_MS[] = {5000, 10000, 30000};
@@ -578,7 +585,10 @@ static void task(void* pvParameters) {
     // 2 sites diferentes, reiniciaram em lockstep de 10 em 10 min sem que isso ajudasse em nada
     // — só somava o sensor fora do ar ao problema que já existia na nuvem. Reboot é self-heal
     // pra pilha de rede travada aqui dentro; erro do outro lado se resolve do outro lado.
-    if (millis() - lastAnsweredMs >= INGEST_STALE_RESTART_MS) ESP.restart();
+    if (millis() - lastAnsweredMs >= INGEST_STALE_RESTART_MS) {
+      mark(Stage::RESTART_SILENT);
+      ESP.restart();
+    }
 
     bool ingestHealthy = millis() - lastOkSendMs < INGEST_STALE_UI_MS;
     publish(uiQueue, ingestHealthy ? Status::ONLINE : Status::OFFLINE, hasReading, sensorStale, temp, hum, rssi);
