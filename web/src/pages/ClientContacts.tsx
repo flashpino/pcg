@@ -34,6 +34,47 @@ const TYPE_LABELS: Record<AlertType, string> = {
   test: 'Teste manual',
   daily: 'Mensagem diária (está tudo bem)',
 };
+const TYPE_ICONS: Record<AlertType, string> = {
+  connectivity: '📶',
+  temperature: '🌡️',
+  humidity: '💧',
+  test: '🧪',
+  daily: '☀️',
+};
+
+// Visão rápida da lista: liga/desliga por canal e por tipo de alerta, sem precisar abrir cada
+// contato pra saber. Ícone apagado (.icon-off) = desligado.
+function ChannelIcons({ c }: { c: Contact }) {
+  const items: [string, boolean, string][] = [
+    ['💬', c.channel_whatsapp, 'WhatsApp'],
+    ['📞', c.channel_voice, 'Voz'],
+    ['✈️', c.channel_telegram, 'Telegram'],
+  ];
+  return (
+    <span className="icon-row">
+      {items.map(([icon, on, label]) => (
+        <span key={label} className={on ? '' : 'icon-off'} title={`${label}: ${on ? 'ligado' : 'desligado'}`}>
+          {icon}
+        </span>
+      ))}
+    </span>
+  );
+}
+
+function AlertIcons({ prefs }: { prefs: AlertPref[] | undefined }) {
+  return (
+    <span className="icon-row">
+      {TYPE_ORDER.map((type) => {
+        const enabled = prefs?.find((p) => p.alert_type === type)?.enabled ?? false;
+        return (
+          <span key={type} className={enabled ? '' : 'icon-off'} title={`${TYPE_LABELS[type]}: ${enabled ? 'ligado' : 'desligado'}`}>
+            {TYPE_ICONS[type]}
+          </span>
+        );
+      })}
+    </span>
+  );
+}
 
 function emptyPref(type: AlertType): AlertPref {
   // A diária não é alerta: os dias/horário são o AGENDAMENTO do envio, então nasce seg-sex 08:00
@@ -167,9 +208,21 @@ export function ClientContacts({ clientId }: { clientId: number }) {
   const [prefs, setPrefs] = useState<Record<AlertType, AlertPref>>(emptyPrefs());
   const [telegramLink, setTelegramLink] = useState<string | null>(null);
   const [linkCopied, setLinkCopied] = useState(false);
+  const [prefsByContact, setPrefsByContact] = useState<Record<number, AlertPref[]>>({});
 
+  // Busca as prefs de todo mundo junto com a lista — é o mesmo endpoint que edit() já usa por
+  // contato, só que em paralelo pra todos, pra render os ícones sem abrir cada um.
   function load() {
-    api.get<Contact[]>(`/api/contacts?clientId=${clientId}`).then(setContacts).catch((err) => setError(err.message));
+    api
+      .get<Contact[]>(`/api/contacts?clientId=${clientId}`)
+      .then(async (cs) => {
+        setContacts(cs);
+        const entries = await Promise.all(
+          cs.map(async (c) => [c.id, await api.get<AlertPref[]>(`/api/contacts/${c.id}/alert-prefs`)] as const),
+        );
+        setPrefsByContact(Object.fromEntries(entries));
+      })
+      .catch((err) => setError(err.message));
   }
 
   useEffect(load, [clientId]);
@@ -357,6 +410,8 @@ export function ClientContacts({ clientId }: { clientId: number }) {
           <tr>
             <th>Nome</th>
             <th>Telefone</th>
+            <th>Canais</th>
+            <th>Alertas</th>
             <th>Status</th>
             <th />
           </tr>
@@ -366,20 +421,27 @@ export function ClientContacts({ clientId }: { clientId: number }) {
             <tr key={c.id}>
               <td>{c.name}</td>
               <td>{c.phone}</td>
+              <td><ChannelIcons c={c} /></td>
+              <td><AlertIcons prefs={prefsByContact[c.id]} /></td>
               <td className={c.active ? 'status-online' : 'status-offline'}>{c.active ? 'ativo' : 'inativo'}</td>
               <td>
-                <button className="secondary" onClick={() => edit(c)}>
-                  Editar
-                </button>{' '}
-                <button className="secondary" onClick={() => sendWelcome(c)}>
-                  Boas-vindas
-                </button>{' '}
-                <button className="secondary" onClick={() => sendTest(c)}>
-                  Testar canal
-                </button>{' '}
-                <button className="danger" onClick={() => remove(c)}>
-                  Remover
-                </button>
+                <details>
+                  <summary className="icon-btn" title="Ações">⋮</summary>
+                  <div className="actions-menu">
+                    <button className="secondary" onClick={() => edit(c)}>
+                      Editar
+                    </button>
+                    <button className="secondary" onClick={() => sendWelcome(c)}>
+                      Boas-vindas
+                    </button>
+                    <button className="secondary" onClick={() => sendTest(c)}>
+                      Testar canal
+                    </button>
+                    <button className="danger" onClick={() => remove(c)}>
+                      Remover
+                    </button>
+                  </div>
+                </details>
               </td>
             </tr>
           ))}

@@ -133,6 +133,12 @@ nav.tabs button.active { color: var(--on-surface); border-bottom-color: var(--pr
 }
 .icon-btn:hover { background: var(--surface-container-low); color: var(--on-surface); }
 .icon-btn .material-symbols-outlined { font-size: 1.05rem; }
+.icon-row { display: inline-flex; gap: 0.3rem; font-size: 0.95rem; }
+.icon-row .icon-off { opacity: 0.25; filter: grayscale(1); }
+details > summary { cursor: pointer; list-style: none; }
+details > summary::-webkit-details-marker { display: none; }
+.actions-menu { display: flex; flex-direction: column; gap: 0.3rem; margin-top: 0.4rem; min-width: 8rem; }
+.actions-menu button { width: 100%; }
 main {
   max-width: 1600px;
   margin: 0 auto;
