@@ -12,7 +12,12 @@ export const PUBLIC_API_ROUTES = [
 export function isPublicRoute(url: string): boolean {
   const path = url.split('?')[0];
   if (!path.startsWith('/api/')) return true;
-  return PUBLIC_API_ROUTES.includes(path) || path.startsWith('/api/ota/') || path.startsWith('/api/twilio/');
+  return (
+    PUBLIC_API_ROUTES.includes(path) ||
+    path.startsWith('/api/ota/') ||
+    path.startsWith('/api/twilio/') ||
+    path.startsWith('/api/telegram/')
+  );
 }
 
 // Autorização por role, além da autenticação (jwtVerify, feita no index.ts): token de cliente

@@ -22,9 +22,10 @@ import { sensorsRoutes } from './routes/sensors.js';
 import { settingsRoutes } from './routes/settings.js';
 import { supervisorPortalRoutes } from './routes/supervisorPortal.js';
 import { supervisorsRoutes } from './routes/supervisors.js';
+import { telegramWebhookRoutes } from './routes/telegramWebhook.js';
 import { twilioRoutes } from './routes/twilio.js';
 import { startConnectivitySweep } from './services/connectivitySweep.js';
-import { getEvolutionConnectionState, startNotifier } from './services/notifier.js';
+import { getEvolutionConnectionState, registerTelegramWebhook, startNotifier } from './services/notifier.js';
 
 // Env-check fatal: servidor meio-configurado em local remoto é o pior cenário.
 const REQUIRED_ENVS = [
@@ -93,6 +94,7 @@ await app.register(provisionRoutes);
 await app.register(ingestRoutes);
 await app.register(firmwareRoutes);
 await app.register(twilioRoutes);
+await app.register(telegramWebhookRoutes);
 
 // web/dist só existe depois de `npm run build` em web/ — em dev usa-se o Vite dev server
 // (proxy pra :3000) em vez disto, então não travar o boot se a pasta não existir ainda.
@@ -110,5 +112,6 @@ await seedSettings();
 app.log.info('migração ok');
 await startNotifier();
 app.log.info('notifier ok');
+await registerTelegramWebhook();
 startConnectivitySweep(app.log);
 await app.listen({ port: Number(process.env.PORT ?? 3000), host: '0.0.0.0' });
