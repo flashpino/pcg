@@ -166,6 +166,7 @@ export function ClientContacts({ clientId }: { clientId: number }) {
   const [form, setForm] = useState(emptyForm(clientId));
   const [prefs, setPrefs] = useState<Record<AlertType, AlertPref>>(emptyPrefs());
   const [telegramLink, setTelegramLink] = useState<string | null>(null);
+  const [linkCopied, setLinkCopied] = useState(false);
 
   function load() {
     api.get<Contact[]>(`/api/contacts?clientId=${clientId}`).then(setContacts).catch((err) => setError(err.message));
@@ -226,6 +227,14 @@ export function ClientContacts({ clientId }: { clientId: number }) {
     if (!editingId) return;
     const { url } = await api.post<{ url: string }>(`/api/contacts/${editingId}/telegram-link`);
     setTelegramLink(url);
+    setLinkCopied(false);
+  }
+
+  async function copyTelegramLink() {
+    if (!telegramLink) return;
+    await navigator.clipboard.writeText(telegramLink);
+    setLinkCopied(true);
+    setTimeout(() => setLinkCopied(false), 1500);
   }
 
   return (
@@ -284,7 +293,11 @@ export function ClientContacts({ clientId }: { clientId: number }) {
           )}
           {telegramLink && (
             <small>
-              Envie ao contato: <a href={telegramLink} target="_blank" rel="noreferrer">{telegramLink}</a>
+              Envie ao contato:{' '}
+              <code style={{ cursor: 'pointer' }} title="Clique para copiar" onClick={copyTelegramLink}>
+                {telegramLink}
+              </code>
+              {linkCopied && ' (copiado!)'}
             </small>
           )}
         </div>
