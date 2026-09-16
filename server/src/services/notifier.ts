@@ -63,9 +63,16 @@ export const enqueueVoice = (job: NotifyJob, delaySeconds = 0) =>
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+// Instância Evolution efetiva: app_settings (trocável no painel, sem redeploy — ex. número
+// bloqueado pela Meta) tem prioridade sobre a env, que continua sendo o default de instalação.
+async function evolutionInstance(): Promise<string> {
+  return (await getSetting('evolution_instance')) || process.env.EVOLUTION_INSTANCE!;
+}
+
 // Evolution usa WhatsApp Web por baixo — número sem '+' e sem formatação, texto livre.
 async function sendWhatsapp(job: NotifyJob): Promise<void> {
-  const res = await fetch(`${process.env.EVOLUTION_URL}/message/sendText/${process.env.EVOLUTION_INSTANCE}`, {
+  const instance = await evolutionInstance();
+  const res = await fetch(`${process.env.EVOLUTION_URL}/message/sendText/${instance}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', apikey: process.env.EVOLUTION_APIKEY! },
     body: JSON.stringify({ number: job.phone.replace(/\D/g, ''), text: job.text }),
@@ -209,9 +216,11 @@ export async function startNotifier(): Promise<void> {
   await b.schedule(SCHEDULE_TICK_QUEUE, '* * * * *', {}, { tz: 'America/Sao_Paulo' });
 }
 
-export const getEvolutionConnectionState = () =>
-  fetch(`${process.env.EVOLUTION_URL}/instance/connectionState/${process.env.EVOLUTION_INSTANCE}`, {
+export const getEvolutionConnectionState = async () => {
+  const instance = await evolutionInstance();
+  return fetch(`${process.env.EVOLUTION_URL}/instance/connectionState/${instance}`, {
     headers: { apikey: process.env.EVOLUTION_APIKEY! },
   })
     .then((r) => (r.ok ? r.json() : { state: 'error' }))
     .catch(() => ({ state: 'error' }));
+};
