@@ -19,4 +19,19 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
     await setSetting('test_schedule_time', String(time));
     return { ok: true };
   });
+
+  // Instância Evolution trocável sem redeploy: se a Meta bloquear o número, o admin troca aqui pra
+  // outra instância já configurada na Evolution, em vez de mexer em env/código.
+  app.get('/api/settings/evolution-instance', async () => ({
+    instance: (await getSetting('evolution_instance')) ?? process.env.EVOLUTION_INSTANCE ?? '',
+  }));
+
+  app.put<{ Body: { instance: string } }>('/api/settings/evolution-instance', async (req) => {
+    const instance = String(req.body?.instance ?? '').trim();
+    if (!instance) {
+      throw Object.assign(new Error('instance não pode ser vazio'), { statusCode: 400 });
+    }
+    await setSetting('evolution_instance', instance);
+    return { ok: true };
+  });
 }
