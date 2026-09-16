@@ -21,7 +21,7 @@ import {
 } from '../db/queries.js';
 import { queryLatestReadings } from './influx.js';
 import { renderTemplate } from './messageTemplates.js';
-import { enqueueVoice, enqueueWhatsapp } from './notifier.js';
+import { enqueueTelegram, enqueueVoice, enqueueWhatsapp } from './notifier.js';
 import { alreadySentToday, isWithinWindow } from './scheduleWindow.js';
 
 const HYSTERESIS = 0.5;
@@ -131,7 +131,7 @@ async function renderMessage(key: string, vars: Record<string, string | number |
   };
 }
 
-export type Channel = 'whatsapp' | 'voice';
+export type Channel = 'whatsapp' | 'voice' | 'telegram';
 type Kind = 'fire' | 'resolve' | 'renotify';
 
 // Ponto único de enfileiramento: aplica preferência do tipo + janela de horário (auditável via
@@ -153,7 +153,11 @@ async function notifyContacts(
 
     const pref = prefs.find((p) => p.contact_id === contact.id && p.alert_type === type);
     for (const channel of channels) {
-      const channelEnabled = channel === 'whatsapp' ? contact.channel_whatsapp : contact.channel_voice;
+      const channelEnabled = {
+        whatsapp: contact.channel_whatsapp,
+        voice: contact.channel_voice,
+        telegram: contact.channel_telegram,
+      }[channel];
       if (!channelEnabled) {
         await createNotification(alert.id, contact.id, channel, 'skipped_channel');
         continue;
@@ -163,6 +167,12 @@ async function notifyContacts(
       // daqui ela não deixava rastro e "não ligou" ficava idêntico a fila travada/Twilio fora.
       if (channel === 'voice' && !texts.voice) {
         await createNotification(alert.id, contact.id, channel, 'skipped_no_voice_text');
+        continue;
+      }
+      // Canal ligado mas ainda sem chat_id vinculado (contato não deu /start no bot, ou o admin
+      // ligou o canal antes de colar/gerar o link) — mesmo padrão de auditoria do guard acima.
+      if (channel === 'telegram' && !contact.telegram_chat_id) {
+        await createNotification(alert.id, contact.id, channel, 'skipped_no_telegram_chat_id');
         continue;
       }
 
@@ -183,9 +193,12 @@ async function notifyContacts(
       // texts.voice garantido pelo guard de skipped_no_voice_text acima.
       const text = channel === 'voice' ? texts.voice! : texts.whatsapp;
       const notification = await createNotification(alert.id, contact.id, channel, 'queued');
-      const job = { notificationId: notification.id, phone: contact.phone, text };
+      // telegram_chat_id garantido pelo guard de skipped_no_telegram_chat_id acima.
+      const to = channel === 'telegram' ? contact.telegram_chat_id! : contact.phone;
+      const job = { notificationId: notification.id, phone: to, text };
       if (channel === 'whatsapp') await enqueueWhatsapp(job, delaySeconds);
-      else await enqueueVoice(job, delaySeconds);
+      else if (channel === 'voice') await enqueueVoice(job, delaySeconds);
+      else await enqueueTelegram(job, delaySeconds);
     }
   }
 }
@@ -212,7 +225,7 @@ async function evaluateType(
     // Ligação de voz é exclusiva de alerta de temperatura, e só no disparo inicial (nunca em
     // renotify/resolve) — garante "1 ligação por alerta". Template sem texto de voz e contato com
     // o canal desligado são decididos (e auditados) dentro de notifyContacts.
-    const channels: Channel[] = type === 'temperature' ? ['whatsapp', 'voice'] : ['whatsapp'];
+    const channels: Channel[] = type === 'temperature' ? ['whatsapp', 'voice', 'telegram'] : ['whatsapp', 'telegram'];
     if (alert) await notifyContacts(alert, contacts, prefs, type, channels, texts, 'fire');
     return;
   }
@@ -221,12 +234,12 @@ async function evaluateType(
   if (transition === 'resolve') {
     await resolveAlert(firing!.id);
     const texts = await renderMessage(`${type}_resolve`, vars);
-    await notifyContacts(firing!, contacts, prefs, type, ['whatsapp'], texts, 'resolve');
+    await notifyContacts(firing!, contacts, prefs, type, ['whatsapp', 'telegram'], texts, 'resolve');
     return;
   }
 
   const texts = await renderMessage(`${type}_fire`, vars);
-  await notifyContacts(firing!, contacts, prefs, type, ['whatsapp'], texts, 'renotify');
+  await notifyContacts(firing!, contacts, prefs, type, ['whatsapp', 'telegram'], texts, 'renotify');
 }
 
 // Sensor não reivindicado (client_id null) não tem contatos — ingest chama isso incondicionalmente.
@@ -442,7 +455,7 @@ export async function evaluateConnectivity(sensor: Sensor, offline: boolean): Pr
     const alert = await createAlert(sensor.id, 'connectivity', null, texts.whatsapp);
     // Sem ligação de voz aqui — voz é exclusiva de alerta de temperatura.
     if (alert) {
-      await notifyContacts(alert, contacts, prefs, 'connectivity', ['whatsapp'], texts, 'fire');
+      await notifyContacts(alert, contacts, prefs, 'connectivity', ['whatsapp', 'telegram'], texts, 'fire');
       await notifyAdminsHardware(alert, 'fire', vars);
     }
     return;
@@ -455,13 +468,13 @@ export async function evaluateConnectivity(sensor: Sensor, offline: boolean): Pr
     // tranquilização. Quem precisa saber já recebeu o alerta de hardware.
     if (await getFiringAlert(sensor.id, 'hardware')) return;
     const texts = await renderMessage('connectivity_resolve', vars);
-    await notifyContacts(firing!, contacts, prefs, 'connectivity', ['whatsapp'], texts, 'resolve');
+    await notifyContacts(firing!, contacts, prefs, 'connectivity', ['whatsapp', 'telegram'], texts, 'resolve');
     await notifyAdminsHardware(firing!, 'resolve', vars);
     return;
   }
 
   const texts = await renderMessage('connectivity_renotify', vars);
-  await notifyContacts(firing!, contacts, prefs, 'connectivity', ['whatsapp'], texts, 'renotify');
+  await notifyContacts(firing!, contacts, prefs, 'connectivity', ['whatsapp', 'telegram'], texts, 'renotify');
 }
 
 // Avisa por WhatsApp, antes de qualquer teste, que a ligação que vem a seguir não é uma
@@ -476,7 +489,7 @@ async function warnBeforeTest(
   vars: Record<string, string | number | undefined>,
 ): Promise<void> {
   const warningTexts = await renderMessage('test_warning', vars);
-  await notifyContacts(alert, contacts, prefs, 'test', ['whatsapp'], warningTexts, 'fire');
+  await notifyContacts(alert, contacts, prefs, 'test', ['whatsapp', 'telegram'], warningTexts, 'fire');
 }
 
 // Respiro entre o aviso e o teste em si. Sem ele o telefone tocava junto com o WhatsApp de aviso,
@@ -487,9 +500,10 @@ const TEST_DELAY_SECONDS = 120;
 // pelo agendamento automático. Usa a pref dedicada 'test' de cada contato (liga/desliga, dias,
 // janela) via notifyContacts — o texto vem do template 'test', não da chave do tipo. Inclui voz
 // quando o template 'test' tem texto de voz configurado (mesmo critério de sendContactTest).
-// channels default é o teste manual (painel/device): whatsapp + voz. O agendamento automático
-// (runScheduledTests em notifier.ts) passa ['whatsapp'] — teste semanal não liga.
-export async function sendTest(sensor: Sensor, channels: Channel[] = ['whatsapp', 'voice']): Promise<void> {
+// channels default é o teste manual (painel/device): whatsapp + voz + telegram. O agendamento
+// automático (runScheduledTests em notifier.ts) passa ['whatsapp', 'telegram'] — sem voz, teste
+// semanal não liga.
+export async function sendTest(sensor: Sensor, channels: Channel[] = ['whatsapp', 'voice', 'telegram']): Promise<void> {
   if (sensor.client_id === null) return; // sensor não reivindicado não tem contatos
 
   const latest = (await queryLatestReadings([sensor.id])).get(sensor.id);
@@ -571,7 +585,7 @@ export async function sendDailyReport(contact: Contact, sensor: Sensor): Promise
     return;
   }
 
-  await notifyContacts(alert, [contact], prefs, 'daily', ['whatsapp'], texts, 'fire');
+  await notifyContacts(alert, [contact], prefs, 'daily', ['whatsapp', 'telegram'], texts, 'fire');
 }
 
 // Teste avulso de um único contato (botão "Testar canal" no cadastro) — mesma pref dedicada
@@ -600,5 +614,5 @@ export async function sendContactTest(contact: Contact): Promise<void> {
   const alert = await createResolvedAlert(sensor.id, 'test', texts.whatsapp);
   const prefs = await listContactAlertPrefsByClient(contact.client_id);
   await warnBeforeTest(alert, [contact], prefs, vars);
-  await notifyContacts(alert, [contact], prefs, 'test', ['whatsapp', 'voice'], texts, 'fire', TEST_DELAY_SECONDS);
+  await notifyContacts(alert, [contact], prefs, 'test', ['whatsapp', 'voice', 'telegram'], texts, 'fire', TEST_DELAY_SECONDS);
 }

@@ -17,7 +17,7 @@ import {
 } from './alertService.js';
 import * as queries from '../db/queries.js';
 import { queryLatestReadings } from './influx.js';
-import { enqueueVoice, enqueueWhatsapp } from './notifier.js';
+import { enqueueTelegram, enqueueVoice, enqueueWhatsapp } from './notifier.js';
 
 // Só o necessário pros caminhos de notificação de admin — o resto do arquivo testa função pura.
 vi.mock('../db/queries.js', () => ({
@@ -37,7 +37,7 @@ vi.mock('../db/queries.js', () => ({
   listSensors: vi.fn(),
   resolveAlert: vi.fn(),
 }));
-vi.mock('./notifier.js', () => ({ enqueueWhatsapp: vi.fn(), enqueueVoice: vi.fn() }));
+vi.mock('./notifier.js', () => ({ enqueueWhatsapp: vi.fn(), enqueueVoice: vi.fn(), enqueueTelegram: vi.fn() }));
 vi.mock('./influx.js', () => ({ queryLatestReadings: vi.fn(async () => new Map()) }));
 
 describe('isBackInBounds', () => {
@@ -881,5 +881,34 @@ describe('evaluate — por que a ligação de temperatura não saiu', () => {
     expect(enqueueVoice).toHaveBeenCalledTimes(1);
     // Alerta real liga na hora — o atraso de 2 min é exclusivo do teste, que tem aviso prévio.
     expect(enqueueVoice).toHaveBeenCalledWith(expect.objectContaining({ phone: '+5511999999999', text: 'alô' }), 0);
+  });
+
+  it('canal telegram ligado e vinculado dispara enqueueTelegram com o chat_id', async () => {
+    vi.mocked(queries.listContacts).mockResolvedValue([
+      { ...contatoAtivo, channel_telegram: true, telegram_chat_id: '999888777' },
+    ]);
+
+    await evaluate(sensor, { temp: 31, hum: 50 });
+
+    expect(enqueueTelegram).toHaveBeenCalledTimes(1);
+    expect(enqueueTelegram).toHaveBeenCalledWith(expect.objectContaining({ phone: '999888777', text: 'fora do limite' }), 0);
+  });
+
+  it('canal telegram desligado registra skipped_channel e não chama enqueueTelegram', async () => {
+    await evaluate(sensor, { temp: 31, hum: 50 });
+
+    expect(queries.createNotification).toHaveBeenCalledWith(70, 5, 'telegram', 'skipped_channel');
+    expect(enqueueTelegram).not.toHaveBeenCalled();
+  });
+
+  it('canal telegram ligado mas sem chat_id vinculado registra skipped_no_telegram_chat_id', async () => {
+    vi.mocked(queries.listContacts).mockResolvedValue([
+      { ...contatoAtivo, channel_telegram: true, telegram_chat_id: null },
+    ]);
+
+    await evaluate(sensor, { temp: 31, hum: 50 });
+
+    expect(queries.createNotification).toHaveBeenCalledWith(70, 5, 'telegram', 'skipped_no_telegram_chat_id');
+    expect(enqueueTelegram).not.toHaveBeenCalled();
   });
 });

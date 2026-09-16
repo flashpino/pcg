@@ -181,7 +181,8 @@ async function runJob(job: NotifyJob, send: (job: NotifyJob) => Promise<void>): 
 // Roda a cada minuto (ver startNotifier); cada sensor tem seu próprio dow/time (ou herda o
 // padrão global de app_settings quando NULL) — só dispara sendTest nos sensores cujo horário
 // bate com o agora, em vez de um cron único disparando todos de uma vez.
-// Só whatsapp: o teste manual (botão do painel/device) liga — o semanal automático não.
+// Whatsapp + telegram: ligação de voz fica só pro teste manual (botão do painel/device), o
+// semanal automático não liga.
 async function runScheduledTests(): Promise<void> {
   const { dow, time } = spNow(new Date());
   const defaultDow = (await getSetting('test_schedule_dow')) ?? '1';
@@ -191,7 +192,7 @@ async function runScheduledTests(): Promise<void> {
     for (const sensor of await listSensors(client.id)) {
       const sensorDow = sensor.test_schedule_dow ?? defaultDow;
       const sensorTime = sensor.test_schedule_time ?? defaultTime;
-      if (sensorDow === dow && sensorTime === time) await sendTest(sensor, ['whatsapp']);
+      if (sensorDow === dow && sensorTime === time) await sendTest(sensor, ['whatsapp', 'telegram']);
     }
   }
 }
