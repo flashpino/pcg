@@ -61,6 +61,13 @@ CREATE TABLE IF NOT EXISTS contacts (
 );
 -- Liga/desliga geral do contato (independente das prefs por tipo abaixo).
 ALTER TABLE contacts ADD COLUMN IF NOT EXISTS active BOOLEAN NOT NULL DEFAULT true;
+-- Telegram como canal alternativo ao WhatsApp (bloqueio pela Meta, Evolution fora do ar etc.).
+-- channel_telegram começa false (diferente de voz/whatsapp): sem chat_id vinculado não há pra
+-- onde mandar. telegram_link_token é o token de uso único do link de convite (t.me/<bot>?start=);
+-- limpo assim que o webhook vincula o chat_id.
+ALTER TABLE contacts ADD COLUMN IF NOT EXISTS channel_telegram BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE contacts ADD COLUMN IF NOT EXISTS telegram_chat_id TEXT;
+ALTER TABLE contacts ADD COLUMN IF NOT EXISTS telegram_link_token TEXT UNIQUE;
 
 -- Config independente por tipo de alerta (dias/horário/re-alerta e liga/desliga próprios),
 -- substituindo os campos únicos e compartilhados de `contacts` (que ficam pra trás, sem uso
@@ -144,8 +151,8 @@ CREATE TABLE IF NOT EXISTS notifications (
   id SERIAL PRIMARY KEY,
   alert_id INT NOT NULL REFERENCES alerts(id),
   contact_id INT REFERENCES contacts(id) ON DELETE SET NULL,
-  channel TEXT NOT NULL,                   -- 'voice' | 'whatsapp'
-  status TEXT NOT NULL DEFAULT 'queued',   -- queued|sent|failed|skipped_window|skipped_pref|skipped_channel|skipped_no_voice_text|skipped_no_admin|skipped_alert_firing|skipped_already_sent
+  channel TEXT NOT NULL,                   -- 'voice' | 'whatsapp' | 'telegram'
+  status TEXT NOT NULL DEFAULT 'queued',   -- queued|sent|failed|skipped_window|skipped_pref|skipped_channel|skipped_no_voice_text|skipped_no_telegram_chat_id|skipped_no_admin|skipped_alert_firing|skipped_already_sent
   detail TEXT,
   created_at TIMESTAMPTZ DEFAULT now()
 );

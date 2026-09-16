@@ -282,6 +282,9 @@ export interface Contact {
   phone: string;
   channel_voice: boolean;
   channel_whatsapp: boolean;
+  channel_telegram: boolean;
+  telegram_chat_id: string | null;
+  telegram_link_token: string | null;
   timezone: string;
   active: boolean;
   created_at: string;
@@ -293,6 +296,8 @@ export interface ContactInput {
   phone: string;
   channel_voice?: boolean;
   channel_whatsapp?: boolean;
+  channel_telegram?: boolean;
+  telegram_chat_id?: string;
   timezone?: string;
   active?: boolean;
 }
@@ -342,6 +347,25 @@ export const updateContact = (id: number, patch: Partial<ContactInput>) => {
 
 export const deleteContact = (id: number) =>
   pool.query('DELETE FROM contacts WHERE id = $1', [id]).then((r) => r.rowCount! > 0);
+
+// Token de uso único do link de convite (POST /api/contacts/:id/telegram-link) — não faz parte
+// de ContactInput porque o admin não edita direto, só o servidor gera/consome.
+export const setTelegramLinkToken = (id: number, token: string) =>
+  pool.query('UPDATE contacts SET telegram_link_token = $2 WHERE id = $1', [id, token]).then(() => undefined);
+
+export const getContactByTelegramToken = (token: string) =>
+  pool.query<Contact>('SELECT * FROM contacts WHERE telegram_link_token = $1', [token]).then((r) => r.rows[0]);
+
+// Chamado pelo webhook do Telegram (POST /api/telegram/webhook) quando o contato dá /start no
+// bot: vincula o chat_id, liga o canal e consome o token (uso único).
+export const linkTelegramChat = (id: number, chatId: string) =>
+  pool
+    .query<Contact>(
+      `UPDATE contacts SET telegram_chat_id = $2, channel_telegram = true, telegram_link_token = NULL
+       WHERE id = $1 RETURNING *`,
+      [id, chatId],
+    )
+    .then((r) => r.rows[0]);
 
 export interface ContactAlertPref {
   contact_id: number;
@@ -440,7 +464,7 @@ export interface Notification {
   alert_id: number;
   contact_id: number | null;
   admin_id: number | null;
-  channel: 'voice' | 'whatsapp';
+  channel: 'voice' | 'whatsapp' | 'telegram';
   status: string;
   detail: string | null;
   created_at: string;
