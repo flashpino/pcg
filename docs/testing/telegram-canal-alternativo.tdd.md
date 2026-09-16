@@ -23,7 +23,7 @@ Depois: Cada contato ganha um canal `channel_telegram` (booleano) com correspond
 
 | # | User journey | Teste | Resultado |
 |---|---|---|---|
-| 1 | Como admin, quero adicionar Telegram ao modelo de dados de contatos (colunas + tipos) | `cd server && npx vitest run` (Task 1: fixture `contatoAtivo` compilando com novos campos) | PASS (168 tests) |
+| 1 | Como admin, quero adicionar Telegram ao modelo de dados de contatos (colunas + tipos) | `cd server && npx vitest run` (Task 1: fixture `contatoAtivo` compilando com novos campos) | PASS (170 tests) |
 | 2 | Como sistema, devo enfileirar mensagens Telegram numa fila com retry/expiry (pg-boss) | `cd server && npx vitest run src/services/notifier.test.ts` (Task 2: `registerTelegramWebhook`) | PASS (15 tests, 2 novos) |
 | 3 | Como sistema, ao enviar notificação de alerta, devo incluir o canal Telegram junto a WhatsApp/voz se ligado | `cd server && npx vitest run src/services/alertService.test.ts` (Task 3: 3 testes novos sobre gate e dispatch) | PASS (71 tests, 3 novos) |
 | 4 | Como contato, devo poder linkar meu chat_id via `/start` no bot (webhook da Telegram Bot API) | `cd server && npx vitest run src/routes/telegramWebhook.test.ts` (Task 4: 6 testes novos — arquivo novo, incluindo o teste do fix `bbff8b9` para payload sem chat_id) | PASS (6 tests, 6 novos) |
@@ -62,19 +62,19 @@ Evidência: `cd server && npx vitest run --exclude "**/authz.test.ts"`
 
 ```
  Test Files  12 passed (12)
-      Tests  168 passed (168)
+      Tests  170 passed (170)
    Start at  12:49:28
    Duration  1.54s
 ```
 
-Suíte inteira compreende:
+Suíte inteira compreende (contagem final, após o fix de 2 achados Critical da revisão final de branch — ver abaixo):
 - `src/services/scheduleWindow.test.ts` (26 testes)
-- `src/services/alertService.test.ts` (71 testes, +3 novos em Task 3)
+- `src/services/alertService.test.ts` (72 testes, +3 novos em Task 3 +1 novo no fix da revisão final)
 - `src/routes/ingest.test.ts` (11 testes)
 - `src/routes/telegramWebhook.test.ts` (6 testes, +6 novos em Task 4, novo arquivo)
 - `src/routes/settings.test.ts` (4 testes)
 - `src/routes/contacts.test.ts` (6 testes, +6 novos em Task 5, novo arquivo)
-- `src/services/notifier.test.ts` (15 testes, +2 novos em Task 2)
+- `src/services/notifier.test.ts` (16 testes, +2 novos em Task 2 +1 novo no fix da revisão final)
 - `src/services/dashboardService.test.ts` (15 testes)
 - `src/services/influx.test.ts` (2 testes)
 - `src/db/schema.test.ts` (3 testes)
@@ -107,12 +107,34 @@ Suíte inteira compreende:
 
 - **`web/src/pages/SupervisorsPage.tsx` está com conteúdo binário/corrompido no disco local** (hash diferente entre HEAD e working tree, não detectado por `git status`/`git diff`), bloqueando `tsc`/`npm run build` em `web/`. O erro específico de compilador foi reportado em uma sessão anterior, não capturado por um comando rodado nesta sessão de evidência — por isso não é reproduzido aqui literalmente. Não editado, não corrigido — fora de escopo desta feature e de escopo de teste (Task 6 valida só com esbuild isolado, que não baixa dependências cruzadas).
 
+## Revisão final de branch inteira — achados corrigidos
+
+A revisão final (após as 7 tasks individuais já aprovadas) comparou o branch inteiro contra a
+spec e achou 2 problemas Critical que nenhum diff de task isolado revelava — cada um nasceu do
+encontro de duas tasks diferentes, não de uma task sozinha:
+
+1. **`createContact` não persistia `channel_telegram`/`telegram_chat_id`** — o Task 1 adicionou os
+   campos ao tipo `ContactInput`, mas o `INSERT INTO contacts (...)` do `createContact` continuava
+   com a lista de colunas antiga. Um contato criado do zero com Telegram configurado no formulário
+   perdia essa configuração em silêncio. Corrigido: colunas e parâmetros adicionados ao INSERT.
+2. **Renotify por Telegram nunca disparava** — `notifyContacts` consultava sempre
+   `getLastNotification(..., 'whatsapp')`, mesmo dentro do loop por canal. Um contato com
+   `channel_whatsapp: false` e `channel_telegram: true` (o cenário central desta feature: WhatsApp
+   bloqueado, Telegram como reserva) tinha o re-alerta por Telegram suprimido pra sempre, sem
+   nenhum rastro na auditoria. Corrigido: a consulta agora usa o canal do loop, não uma string fixa.
+
+Mais um achado Important (webhook registrava sem `TELEGRAM_WEBHOOK_SECRET`, rejeitando tudo depois
+em silêncio) também foi corrigido, com log explícito. Os 3 corrigidos em commit único, com 2 testes
+de regressão novos (RED confirmado antes do fix, GREEN depois). Re-revisão do branch inteiro:
+**Ready to merge: Yes**.
+
 ## Resumo de evidência
 
-- ✓ Todas as 168 testes passam (incluindo 17 novos Telegram: notifier.test.ts +2, alertService.test.ts +3, telegramWebhook.test.ts +6, contacts.test.ts +6)
+- ✓ Todas as 170 testes passam (17 novos Telegram das 7 tasks + 2 novos da revisão final: notifier.test.ts +2+1, alertService.test.ts +3+1, telegramWebhook.test.ts +6, contacts.test.ts +6)
 - ✓ `npx tsc --noEmit` limpo exceto o erro pré-existente em `authz.test.ts`
 - ✓ Dois arquivos de teste novos (`telegramWebhook.test.ts`, `contacts.test.ts`) com cobertura de novos endpoints
-- ✓ Três novos testes de lógica em `alertService.test.ts` cobrindo gate por contato
-- ✓ Dois novos testes de webhook registration em `notifier.test.ts`
+- ✓ Quatro testes de lógica em `alertService.test.ts` cobrindo gate por contato (3 das tasks + 1 do fix de renotify)
+- ✓ Três testes de webhook registration em `notifier.test.ts` (2 das tasks + 1 do fix de secret ausente)
 - ✓ Painel (Task 6) valida sintaxe JSX/TS sem erro
 - ✓ Nenhum código quebrado, migrações de dados rodaram, fixtures atualizadas
+- ✓ Revisão final de branch inteira: 2 Critical + 1 Important corrigidos, re-revisão aprovou merge
