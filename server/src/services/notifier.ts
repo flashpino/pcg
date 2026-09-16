@@ -13,6 +13,7 @@ import { isDailySendTime } from './scheduleWindow.js';
 
 const WHATSAPP_QUEUE = 'notify-whatsapp';
 const VOICE_QUEUE = 'notify-voice';
+const TELEGRAM_QUEUE = 'notify-telegram';
 // Tick de 1 minuto que dirige tudo que é agendado (teste automático do sensor + mensagem diária).
 // O nome da fila continua 'weekly-test' de propósito: pg-boss identifica a fila pela string, e
 // trocá-la deixaria o agendamento antigo órfão no banco.
@@ -49,6 +50,8 @@ const twilioClient = twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_A
 
 export interface NotifyJob {
   notificationId: number;
+  // Destinatário: telefone (whatsapp/voice) ou chat_id do Telegram (telegram) — mesmo campo,
+  // porque quem lê é só o `send*` do canal correspondente.
   phone: string;
   text: string;
 }
@@ -60,6 +63,8 @@ export const enqueueWhatsapp = (job: NotifyJob, delaySeconds = 0) =>
   getBoss().send(WHATSAPP_QUEUE, job, { ...QUEUE_OPTS, startAfter: delaySeconds });
 export const enqueueVoice = (job: NotifyJob, delaySeconds = 0) =>
   getBoss().send(VOICE_QUEUE, job, { ...QUEUE_OPTS, startAfter: delaySeconds });
+export const enqueueTelegram = (job: NotifyJob, delaySeconds = 0) =>
+  getBoss().send(TELEGRAM_QUEUE, job, { ...QUEUE_OPTS, startAfter: delaySeconds });
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -78,6 +83,38 @@ async function sendWhatsapp(job: NotifyJob): Promise<void> {
     body: JSON.stringify({ number: job.phone.replace(/\D/g, ''), text: job.text }),
   });
   if (!res.ok) throw new Error(`evolution respondeu ${res.status}: ${await res.text()}`);
+}
+
+// job.phone aqui é o chat_id (vinculado via /api/contacts/:id/telegram-link ou colado manual no
+// cadastro) — texto puro, sem parse_mode: o texto vem de template editado no painel, e Markdown/
+// HTML interpretado abriria a mesma brecha que o escape de SSML da voz já evita.
+async function sendTelegram(job: NotifyJob): Promise<void> {
+  const res = await fetch(`https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ chat_id: job.phone, text: job.text }),
+  });
+  if (!res.ok) throw new Error(`telegram respondeu ${res.status}: ${await res.text()}`);
+}
+
+// Idempotente, chamado no boot (index.ts) — só faz algo se TELEGRAM_BOT_TOKEN estiver setado,
+// pra instalação sem Telegram configurado não tentar nada. setWebhook da Bot API aceita ser
+// chamado de novo com a mesma URL sem efeito colateral (mesmo espírito de migrate()/seedSettings()).
+export async function registerTelegramWebhook(): Promise<void> {
+  if (!process.env.TELEGRAM_BOT_TOKEN) return;
+  try {
+    const res = await fetch(`https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/setWebhook`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        url: `${process.env.PUBLIC_URL}/api/telegram/webhook`,
+        secret_token: process.env.TELEGRAM_WEBHOOK_SECRET,
+      }),
+    });
+    if (!res.ok) console.error('setWebhook do Telegram falhou', res.status, await res.text());
+  } catch (err) {
+    console.error('setWebhook do Telegram falhou', err);
+  }
 }
 
 const VOICE_NAME = process.env.TWILIO_VOICE_NAME || 'Google.pt-BR-Neural2-B';
@@ -188,6 +225,7 @@ export async function startNotifier(): Promise<void> {
   await b.start();
   await b.createQueue(WHATSAPP_QUEUE);
   await b.createQueue(VOICE_QUEUE);
+  await b.createQueue(TELEGRAM_QUEUE);
   await b.createQueue(SCHEDULE_TICK_QUEUE);
 
   // SERIALIZADA (localConcurrency 1) + jitter 3-8s: rajada de WhatsApp = bloqueio do número pela Meta.
@@ -203,6 +241,11 @@ export async function startNotifier(): Promise<void> {
   // Voz não tem risco de spam Meta — paraleliza.
   await b.work<NotifyJob>(VOICE_QUEUE, { localConcurrency: 3 }, async ([job]) => {
     await runJob(job.data, sendVoice);
+  });
+
+  // Telegram não bane por rajada (sem o risco de Meta do WhatsApp) — paraleliza como voz.
+  await b.work<NotifyJob>(TELEGRAM_QUEUE, { localConcurrency: 5 }, async ([job]) => {
+    await runJob(job.data, sendTelegram);
   });
 
   await b.work(SCHEDULE_TICK_QUEUE, async () => {

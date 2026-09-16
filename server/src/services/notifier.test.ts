@@ -8,7 +8,7 @@ const mocks = vi.hoisted(() => ({
 // redeploy) antes de cair pra env — precisa mockar pra não bater no banco real neste teste.
 vi.mock('../db/queries.js', () => ({ getSetting: mocks.getSetting }));
 
-import { getEvolutionConnectionState, spNow, voiceTwiml } from './notifier.js';
+import { getEvolutionConnectionState, registerTelegramWebhook, spNow, voiceTwiml } from './notifier.js';
 
 // Sem mock de fetch/env fora do necessário: este arquivo testa só função pura, e desde que
 // influx.ts passou a construir o cliente sob demanda (getApis) importar a cadeia notifier ->
@@ -115,6 +115,41 @@ describe('getEvolutionConnectionState', () => {
     expect(fetchMock).toHaveBeenCalledWith(
       'http://evolution.local/instance/connectionState/instancia-env',
       expect.anything(),
+    );
+  });
+});
+
+describe('registerTelegramWebhook', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
+  });
+
+  it('não chama a Bot API quando TELEGRAM_BOT_TOKEN não está setado', async () => {
+    vi.stubEnv('TELEGRAM_BOT_TOKEN', '');
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    await registerTelegramWebhook();
+
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('registra o webhook na Bot API com a URL e o secret certos', async () => {
+    vi.stubEnv('TELEGRAM_BOT_TOKEN', '123:abc');
+    vi.stubEnv('PUBLIC_URL', 'https://proatus.app');
+    vi.stubEnv('TELEGRAM_WEBHOOK_SECRET', 'segredo');
+    const fetchMock = vi.fn(async () => ({ ok: true, text: async () => '' }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await registerTelegramWebhook();
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://api.telegram.org/bot123:abc/setWebhook',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ url: 'https://proatus.app/api/telegram/webhook', secret_token: 'segredo' }),
+      }),
     );
   });
 });
