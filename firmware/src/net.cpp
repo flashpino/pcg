@@ -93,8 +93,13 @@ static const uint32_t CRASH_MAGIC = 0xC0FFEE01;
 static RTC_NOINIT_ATTR uint32_t crashMagic;
 static RTC_NOINIT_ATTR uint32_t bootCount;
 static RTC_NOINIT_ATTR uint8_t stageNet, stageUi;
+// Menor bloco contiguo livre visto durante ESTE boot. Mesmo truque do stage: o valor que
+// interessa e o de ANTES do reset, e nos 10min em que o TLS nao aloca nenhum ingest sai pra
+// contar a historia. Sem sobreviver ao reboot, o diag so mostraria o heap recem-nascido.
+static RTC_NOINIT_ATTR uint16_t minBlockKb;
 // Congelados no boot: o que cada core estava fazendo quando o device morreu.
 static uint8_t prevStageNet = 0, prevStageUi = 0;
+static uint16_t prevMinBlockKb = 0;  // 0 = boot anterior nao mediu (power-on)
 
 void mark(Stage s) { stageNet = static_cast<uint8_t>(s); }
 void markUi(Stage s) { stageUi = static_cast<uint8_t>(s); }
@@ -393,15 +398,16 @@ static IngestResult sendIngest(const Reading* batch, size_t count, bool sensorSt
   doc["reset_reason"] = resetReasonStr();
   doc["sensor_stale"] = sensorStale;
   // b=boots desde o ultimo power-on, n/u=stage de cada core no crash anterior, h=heap livre,
-  // m=MAIOR bloco contiguo livre, s=folga da stack desta task, up=uptime deste boot.
+  // m=MAIOR bloco contiguo livre agora, pm=MENOR bloco visto no boot que morreu (0=power-on),
+  // s=folga da stack desta task, up=uptime deste boot.
   // m existe porque h sozinho engana: o handshake TLS precisa de uma alocacao contigua grande
   // (dezenas de KB). Com o heap fragmentado, h fica alto (100k+) e mesmo assim TODO POST falha
   // por falta de bloco — o device conta "ninguem respondeu" e reinicia em 10min, sem que nada
   // do lado do servidor esteja errado. h alto com m baixo e a assinatura desse caso.
   char diag[96];
-  snprintf(diag, sizeof(diag), "b%lu n%u u%u h%uk m%uk s%u up%lus", (unsigned long)bootCount,
+  snprintf(diag, sizeof(diag), "b%lu n%u u%u h%uk m%uk pm%uk s%u up%lus", (unsigned long)bootCount,
            prevStageNet, prevStageUi, (unsigned)(ESP.getFreeHeap() / 1024),
-           (unsigned)(ESP.getMaxAllocHeap() / 1024),
+           (unsigned)(ESP.getMaxAllocHeap() / 1024), (unsigned)prevMinBlockKb,
            (unsigned)uxTaskGetStackHighWaterMark(nullptr), (unsigned long)(millis() / 1000));
   doc["diag"] = diag;
   doc["boot_id"] = bootCount;
@@ -487,6 +493,9 @@ static void task(void* pvParameters) {
 
   for (;;) {
     esp_task_wdt_reset();
+
+    uint16_t blockKb = ESP.getMaxAllocHeap() / 1024;
+    if (blockKb < minBlockKb) minBlockKb = blockKb;
 
     // Leitura do DHT SEMPRE no topo do loop — a tela mostra temp/umidade independente de
     // rede ou provisionamento (requisito: funciona normal mesmo sem internet). Provisionar e
@@ -607,11 +616,14 @@ void begin(QueueHandle_t uiQueue) {
     crashMagic = CRASH_MAGIC;
     bootCount = 0;
     stageNet = stageUi = 0;
+    minBlockKb = 0xFFFF;
   }
   prevStageNet = stageNet;  // guarda o estado do boot que morreu antes de zerar
   prevStageUi = stageUi;
+  prevMinBlockKb = (minBlockKb == 0xFFFF) ? 0 : minBlockKb;
   bootCount++;
   stageNet = stageUi = 0;
+  minBlockKb = 0xFFFF;
   xTaskCreatePinnedToCore(task, "net", 8192, uiQueue, 1, nullptr, 0);
 }
 
