@@ -393,10 +393,15 @@ static IngestResult sendIngest(const Reading* batch, size_t count, bool sensorSt
   doc["reset_reason"] = resetReasonStr();
   doc["sensor_stale"] = sensorStale;
   // b=boots desde o ultimo power-on, n/u=stage de cada core no crash anterior, h=heap livre,
-  // s=folga da stack desta task (o handshake TLS e o maior consumidor), up=uptime deste boot.
-  char diag[80];
-  snprintf(diag, sizeof(diag), "b%lu n%u u%u h%uk s%u up%lus", (unsigned long)bootCount,
+  // m=MAIOR bloco contiguo livre, s=folga da stack desta task, up=uptime deste boot.
+  // m existe porque h sozinho engana: o handshake TLS precisa de uma alocacao contigua grande
+  // (dezenas de KB). Com o heap fragmentado, h fica alto (100k+) e mesmo assim TODO POST falha
+  // por falta de bloco — o device conta "ninguem respondeu" e reinicia em 10min, sem que nada
+  // do lado do servidor esteja errado. h alto com m baixo e a assinatura desse caso.
+  char diag[96];
+  snprintf(diag, sizeof(diag), "b%lu n%u u%u h%uk m%uk s%u up%lus", (unsigned long)bootCount,
            prevStageNet, prevStageUi, (unsigned)(ESP.getFreeHeap() / 1024),
+           (unsigned)(ESP.getMaxAllocHeap() / 1024),
            (unsigned)uxTaskGetStackHighWaterMark(nullptr), (unsigned long)(millis() / 1000));
   doc["diag"] = diag;
   doc["boot_id"] = bootCount;
