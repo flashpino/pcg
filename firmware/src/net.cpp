@@ -89,7 +89,13 @@ static bool dhtRmtRead(float& temp, float& hum) {
 // RTC_NOINIT_ATTR nao e zerada por reset de watchdog/panic — so o power-on chega com lixo, dai
 // o magic. bootCount conta TODO reboot, inclusive os que o servidor nao registra (ele dedupe
 // por motivo, entao uma sequencia de INT_WDT iguais aparece la como um evento so).
-static const uint32_t CRASH_MAGIC = 0xC0FFEE01;
+// O magic e a VERSAO DO LAYOUT desta RTC RAM, nao so um sentinela de power-on frio.
+// Aprendido na marra: o 1.1.44 acrescentou minBlockKb, o linker deslocou as variaveis abaixo,
+// mas crashMagic ficou no mesmo endereco e passou na checagem — o firmware concluiu "RTC valida"
+// e leu as variaveis deslocadas (e a nova, virgem) como dados bons. O proatus_EA68 voltou
+// "n167 u2 pm1287k": stage fora do enum, e um bloco maior que a RAM inteira do chip.
+// INCREMENTAR SEMPRE que acrescentar, remover ou reordenar qualquer RTC_NOINIT_ATTR aqui.
+static const uint32_t CRASH_MAGIC = 0xC0FFEE02;
 static RTC_NOINIT_ATTR uint32_t crashMagic;
 static RTC_NOINIT_ATTR uint32_t bootCount;
 static RTC_NOINIT_ATTR uint8_t stageNet, stageUi;
