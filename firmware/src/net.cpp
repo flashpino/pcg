@@ -334,9 +334,19 @@ bool isOtaUpdating() {
 static void runOta(const String& url) {
   otaUpdating = true;
   WiFiClientSecure client = makeSecureClient();
-  httpUpdate.onProgress([](int, int) { esp_task_wdt_reset(); });
+  // O WDT era alimentado SO no onProgress. Numa rede que engasga, o download fica mais de 30s
+  // sem progredir, ninguem alimenta o watchdog e ele mata o device NO MEIO do OTA. Ele volta no
+  // firmware velho, o ingest seguinte oferece o mesmo OTA, e o ciclo se repete pra sempre — foi
+  // o que travou o proatus_F794 no 1.1.42 (6x "n5 + watchdog_task" em 3h, sem nunca atualizar).
+  // Sair do watchdog durante o OTA e o certo: httpUpdate tem timeout proprio, e download lento
+  // nao e o tipo de travamento que reiniciar conserta — reiniciar e justamente o que impede o
+  // OTA de terminar.
+  esp_task_wdt_delete(NULL);
   String fullUrl = String(SERVER_URL) + url + "?token=" + storage::loadDeviceToken();
   t_httpUpdate_return ret = httpUpdate.update(client, fullUrl);
+  // HTTP_UPDATE_OK nao chega aqui: a lib reinicia o device sozinha. So a falha volta.
+  esp_task_wdt_add(NULL);
+  esp_task_wdt_reset();
   if (ret == HTTP_UPDATE_FAILED) {
     Serial.printf("OTA falhou: %s\n", httpUpdate.getLastErrorString().c_str());
     // segue o loop normal — tenta de novo no próximo ingest que trouxer ota.url
