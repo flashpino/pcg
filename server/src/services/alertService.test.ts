@@ -32,6 +32,7 @@ vi.mock('../db/queries.js', () => ({
   getLastNotification: vi.fn(),
   getMessageTemplate: vi.fn(async () => ({ whatsapp: 'Sensor {{$sensor}}: {{$de}} -> {{$para}}', voice: null })),
   listAdminsWithPhone: vi.fn(async () => []),
+  listAdminsWithTelegram: vi.fn(async () => []),
   listContactAlertPrefsByClient: vi.fn(),
   listContacts: vi.fn(),
   listFiringAlertsByClient: vi.fn(async () => []),
@@ -179,8 +180,8 @@ describe('notifyAdminsFirmwareUpdate', () => {
 
   it('enfileira WhatsApp pra cada admin com telefone', async () => {
     vi.mocked(queries.listAdminsWithPhone).mockResolvedValue([
-      { id: 3, email: 'a@x', phone: '+5511999999999' },
-      { id: 4, email: 'b@x', phone: '+5511888888888' },
+      { id: 3, email: 'a@x', phone: '+5511999999999', telegram_chat_id: null },
+      { id: 4, email: 'b@x', phone: '+5511888888888', telegram_chat_id: null },
     ]);
 
     await notifyAdminsFirmwareUpdate(sensor, '1.0.0', '1.1.0');
@@ -198,6 +199,33 @@ describe('notifyAdminsFirmwareUpdate', () => {
 
     expect(queries.createResolvedAlert).toHaveBeenCalledWith(7, 'firmware', expect.stringContaining('1.1.0'));
     expect(enqueueWhatsapp).not.toHaveBeenCalled();
+  });
+
+  // Telegram do admin é somado, nunca substitui — um admin só-WhatsApp continua recebendo
+  // normalmente mesmo quando outro admin já vinculou o Telegram.
+  it('soma Telegram pros admins que vincularam, sem excluir quem só tem WhatsApp', async () => {
+    vi.mocked(queries.listAdminsWithPhone).mockResolvedValue([
+      { id: 3, email: 'a@x', phone: '+5511999999999', telegram_chat_id: null },
+    ]);
+    vi.mocked(queries.listAdminsWithTelegram).mockResolvedValue([
+      { id: 4, email: 'b@x', phone: null, telegram_chat_id: '999888777' },
+    ]);
+
+    await notifyAdminsFirmwareUpdate(sensor, '1.0.0', '1.1.0');
+
+    expect(enqueueWhatsapp).toHaveBeenCalledWith(expect.objectContaining({ phone: '+5511999999999' }));
+    expect(enqueueTelegram).toHaveBeenCalledWith(expect.objectContaining({ phone: '999888777' }));
+  });
+
+  it('sem nenhum admin em nenhum canal, registra skipped_no_admin', async () => {
+    vi.mocked(queries.listAdminsWithPhone).mockResolvedValue([]);
+    vi.mocked(queries.listAdminsWithTelegram).mockResolvedValue([]);
+
+    await notifyAdminsFirmwareUpdate(sensor, '1.0.0', '1.1.0');
+
+    expect(queries.createAdminNotification).toHaveBeenCalledWith(42, null, 'whatsapp', 'skipped_no_admin');
+    expect(enqueueWhatsapp).not.toHaveBeenCalled();
+    expect(enqueueTelegram).not.toHaveBeenCalled();
   });
 });
 
@@ -219,7 +247,7 @@ describe('evaluateHardware', () => {
     // produção já trata isso (Boolean(firing) / firing!), o cast só alinha o mock ao runtime.
     vi.mocked(queries.getFiringAlert).mockResolvedValue(undefined as unknown as queries.Alert);
     vi.mocked(queries.createAlert).mockResolvedValue({ id: 55 } as queries.Alert);
-    vi.mocked(queries.listAdminsWithPhone).mockResolvedValue([{ id: 3, email: 'a@x', phone: '+5511999999999' }]);
+    vi.mocked(queries.listAdminsWithPhone).mockResolvedValue([{ id: 3, email: 'a@x', phone: '+5511999999999', telegram_chat_id: null }]);
 
     await evaluateHardware(sensor, true);
 
@@ -299,7 +327,7 @@ describe('evaluateHardware', () => {
   // encheria o WhatsApp do time. Alerta de hardware é fire/resolve só, igual notifyAdminsHardware.
   it('já firing e ainda travado não re-notifica (evita spam a cada heartbeat)', async () => {
     vi.mocked(queries.getFiringAlert).mockResolvedValue({ id: 55 } as queries.Alert);
-    vi.mocked(queries.listAdminsWithPhone).mockResolvedValue([{ id: 3, email: 'a@x', phone: '+5511999999999' }]);
+    vi.mocked(queries.listAdminsWithPhone).mockResolvedValue([{ id: 3, email: 'a@x', phone: '+5511999999999', telegram_chat_id: null }]);
 
     await evaluateHardware(sensor, true);
 
@@ -456,7 +484,7 @@ describe('evaluateConnectivity — fire e renotify', () => {
     vi.mocked(queries.listContacts).mockResolvedValue([contatoAtivo]);
     vi.mocked(queries.listContactAlertPrefsByClient).mockResolvedValue([prefLiberada('connectivity')]);
     vi.mocked(queries.createNotification).mockResolvedValue({ id: 1 } as never);
-    vi.mocked(queries.listAdminsWithPhone).mockResolvedValue([{ id: 3, email: 'a@x', phone: '+5511888888888' }]);
+    vi.mocked(queries.listAdminsWithPhone).mockResolvedValue([{ id: 3, email: 'a@x', phone: '+5511888888888', telegram_chat_id: null }]);
 
     await evaluateConnectivity(sensor, true);
 
@@ -943,7 +971,7 @@ describe('notifyAdminsTelegramLinked', () => {
   it('avisa os admins com telefone quando um contato vincula o Telegram', async () => {
     vi.mocked(queries.listSensors).mockResolvedValue([{ id: 7 } as queries.Sensor]);
     vi.mocked(queries.createResolvedAlert).mockResolvedValue({ id: 55 } as queries.Alert);
-    vi.mocked(queries.listAdminsWithPhone).mockResolvedValue([{ id: 3, email: 'a@x', phone: '+5511888888888' }]);
+    vi.mocked(queries.listAdminsWithPhone).mockResolvedValue([{ id: 3, email: 'a@x', phone: '+5511888888888', telegram_chat_id: null }]);
 
     await notifyAdminsTelegramLinked({ id: 5, name: 'Fulano', client_id: 1 } as queries.Contact);
 

@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { getContactByTelegramToken, linkTelegramChat } from '../db/queries.js';
+import { getAdminByTelegramToken, getContactByTelegramToken, linkAdminTelegramChat, linkTelegramChat } from '../db/queries.js';
 import { notifyAdminsTelegramLinked } from '../services/alertService.js';
 
 interface TelegramUpdate {
@@ -23,15 +23,26 @@ export async function telegramWebhookRoutes(app: FastifyInstance): Promise<void>
     const match = /^\/start (\S+)/.exec(req.body?.message?.text ?? '');
     if (!match) return reply.send();
 
+    const chatId = req.body?.message?.chat?.id;
+    if (!chatId) return reply.send();
+
+    // Token pode ser de contato (Clientes > Contatos) ou de admin (Admins) — mesmo mecanismo de
+    // link, tabelas diferentes. Contato primeiro, é o caso mais comum.
     const contact = await getContactByTelegramToken(match[1]);
-    if (!contact) return reply.send();
+    if (contact) {
+      const linked = await linkTelegramChat(contact.id, String(chatId));
+      // Aviso ao admin não pode derrubar a resposta 200 pro Telegram — se falhar (ex. cliente sem
+      // sensor cadastrado pra pendurar o alerta sintético), o vínculo em si já está gravado.
+      notifyAdminsTelegramLinked(linked).catch((err) => console.error('aviso de vínculo Telegram falhou', err));
+      return reply.send();
+    }
 
-    if (!req.body?.message?.chat?.id) return reply.send();
+    const admin = await getAdminByTelegramToken(match[1]);
+    if (admin) {
+      await linkAdminTelegramChat(admin.id, String(chatId));
+      return reply.send();
+    }
 
-    const linked = await linkTelegramChat(contact.id, String(req.body.message!.chat.id));
-    // Aviso ao admin não pode derrubar a resposta 200 pro Telegram — se falhar (ex. cliente sem
-    // sensor cadastrado pra pendurar o alerta sintético), o vínculo em si já está gravado.
-    notifyAdminsTelegramLinked(linked).catch((err) => console.error('aviso de vínculo Telegram falhou', err));
     reply.send();
   });
 }

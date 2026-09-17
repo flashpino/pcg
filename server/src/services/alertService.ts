@@ -9,6 +9,7 @@ import {
   getLastNotification,
   getMessageTemplate,
   listAdminsWithPhone,
+  listAdminsWithTelegram,
   listContactAlertPrefsByClient,
   listContacts,
   listFiringAlertsByClient,
@@ -252,24 +253,29 @@ export async function evaluate(sensor: Sensor, reading: { temp: number; hum: num
 }
 
 // Caminho único de saída dos avisos de admin (hardware/reboot/firmware). Sempre chamado DEPOIS
-// do alerta já estar gravado: sem nenhum admin com telefone, o evento continua visível em
-// Alertas — antes ele sumia sem rastro e não dava pra distinguir "não disparou" de "não enviou".
-async function notifyAdmins(alert: Alert, whatsapp: string): Promise<void> {
-  const admins = await listAdminsWithPhone();
+// do alerta já estar gravado: sem nenhum admin com telefone/telegram, o evento continua visível
+// em Alertas — antes ele sumia sem rastro e não dava pra distinguir "não disparou" de "não enviou".
+// Telegram é somado ao WhatsApp (nunca substitui) — admin sem vincular continua recebendo normal.
+async function notifyAdmins(alert: Alert, text: string): Promise<void> {
+  const [byPhone, byTelegram] = await Promise.all([listAdminsWithPhone(), listAdminsWithTelegram()]);
 
-  // Nenhum admin com telefone: o aviso não tem pra onde ir, mas o motivo precisa ficar gravado.
+  // Nenhum admin em nenhum canal: o aviso não tem pra onde ir, mas o motivo precisa ficar gravado.
   // Antes o laço rodava vazio e o alerta ficava sem UMA linha de notification — no painel isso é
   // idêntico a "a fila do pg-boss travou" ou "o Evolution caiu", e o operador não tem como saber
   // que só falta preencher o telefone em Admins. Mesmo padrão de auditoria de skipped_pref/
   // skipped_window, com as duas FKs nulas (não há destinatário a apontar).
-  if (admins.length === 0) {
+  if (byPhone.length === 0 && byTelegram.length === 0) {
     await createAdminNotification(alert.id, null, 'whatsapp', 'skipped_no_admin');
     return;
   }
 
-  for (const admin of admins) {
+  for (const admin of byPhone) {
     const notification = await createAdminNotification(alert.id, admin.id, 'whatsapp');
-    await enqueueWhatsapp({ notificationId: notification.id, phone: admin.phone!, text: whatsapp });
+    await enqueueWhatsapp({ notificationId: notification.id, phone: admin.phone!, text });
+  }
+  for (const admin of byTelegram) {
+    const notification = await createAdminNotification(alert.id, admin.id, 'telegram');
+    await enqueueTelegram({ notificationId: notification.id, phone: admin.telegram_chat_id!, text });
   }
 }
 

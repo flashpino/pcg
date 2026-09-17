@@ -1,6 +1,16 @@
 import bcrypt from 'bcryptjs';
 import type { FastifyInstance } from 'fastify';
-import { countUsers, createUserRecord, deleteUser, getUserByEmail, listUsers, updateUser } from '../db/queries.js';
+import { randomUUID } from 'node:crypto';
+import {
+  countUsers,
+  createUserRecord,
+  deleteUser,
+  getUserByEmail,
+  getUserById,
+  listUsers,
+  setAdminTelegramLinkToken,
+  updateUser,
+} from '../db/queries.js';
 
 export async function adminsRoutes(app: FastifyInstance): Promise<void> {
   app.get('/api/admins', async () => listUsers());
@@ -44,5 +54,19 @@ export async function adminsRoutes(app: FastifyInstance): Promise<void> {
     const ok = await deleteUser(Number(req.params.id));
     if (!ok) throw Object.assign(new Error('admin não encontrado'), { statusCode: 404 });
     reply.status(204);
+  });
+
+  // Gera o link de convite (t.me/<bot>?start=<token>) pro admin vincular o próprio Telegram —
+  // mesmo mecanismo de POST /api/contacts/:id/telegram-link, tabela diferente.
+  app.post<{ Params: { id: string } }>('/api/admins/:id/telegram-link', async (req) => {
+    const admin = await getUserById(Number(req.params.id));
+    if (!admin) throw Object.assign(new Error('admin não encontrado'), { statusCode: 404 });
+    if (!process.env.TELEGRAM_BOT_USERNAME) {
+      throw Object.assign(new Error('TELEGRAM_BOT_USERNAME não configurado'), { statusCode: 400 });
+    }
+
+    const token = randomUUID();
+    await setAdminTelegramLinkToken(admin.id, token);
+    return { url: `https://t.me/${process.env.TELEGRAM_BOT_USERNAME}?start=${token}` };
   });
 }

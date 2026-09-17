@@ -182,6 +182,11 @@ CREATE TABLE IF NOT EXISTS users (
 -- Telefone opcional (E.164) — só admins com phone preenchido recebem alerta de hardware
 -- (sensor sem leitura/travado), disparado por evaluateConnectivity em alertService.ts.
 ALTER TABLE users ADD COLUMN IF NOT EXISTS phone TEXT;
+-- Telegram do admin — somado ao WhatsApp (phone), nunca substitui. Mesmo par chat_id/token de
+-- link de convite que contacts já usa; admin com telegram_chat_id preenchido recebe os avisos
+-- de hardware/reboot/firmware também por lá.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS telegram_chat_id TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS telegram_link_token TEXT UNIQUE;
 
 -- Textos de alerta configuráveis pelo painel (Mensagens) — {{$var}} substituído em runtime.
 -- voice só é usado em temperature_fire (ligação é exclusiva de alerta de temperatura).

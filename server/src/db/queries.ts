@@ -9,28 +9,38 @@ export interface User {
 export const getUserByEmail = (email: string) =>
   pool.query<User>('SELECT * FROM users WHERE email = $1', [email]).then((r) => r.rows[0]);
 
+export const getUserById = (id: number) =>
+  pool.query<User>('SELECT * FROM users WHERE id = $1', [id]).then((r) => r.rows[0]);
+
 export interface AdminSummary {
   id: number;
   email: string;
   phone: string | null;
+  telegram_chat_id: string | null;
 }
+
+const ADMIN_SUMMARY_COLS = 'id, email, phone, telegram_chat_id';
 
 // Nunca seleciona password_hash de volta pro painel.
 export const listUsers = () =>
-  pool.query<AdminSummary>('SELECT id, email, phone FROM users ORDER BY email').then((r) => r.rows);
+  pool.query<AdminSummary>(`SELECT ${ADMIN_SUMMARY_COLS} FROM users ORDER BY email`).then((r) => r.rows);
 
 // Só quem tem telefone cadastrado recebe alerta de hardware (sensor travado/sem leitura).
 export const listAdminsWithPhone = () =>
   pool
-    .query<AdminSummary>("SELECT id, email, phone FROM users WHERE phone IS NOT NULL AND phone <> ''")
+    .query<AdminSummary>(`SELECT ${ADMIN_SUMMARY_COLS} FROM users WHERE phone IS NOT NULL AND phone <> ''`)
     .then((r) => r.rows);
+
+// Somado ao WhatsApp (nunca substitui) — admin com Telegram vinculado recebe os avisos por lá também.
+export const listAdminsWithTelegram = () =>
+  pool.query<AdminSummary>(`SELECT ${ADMIN_SUMMARY_COLS} FROM users WHERE telegram_chat_id IS NOT NULL`).then((r) => r.rows);
 
 export const countUsers = () => pool.query('SELECT COUNT(*) FROM users').then((r) => Number(r.rows[0].count));
 
 export const createUserRecord = (email: string, passwordHash: string, phone: string | null = null) =>
   pool
     .query<AdminSummary>(
-      'INSERT INTO users (email, password_hash, phone) VALUES ($1, $2, $3) RETURNING id, email, phone',
+      `INSERT INTO users (email, password_hash, phone) VALUES ($1, $2, $3) RETURNING ${ADMIN_SUMMARY_COLS}`,
       [email, passwordHash, phone],
     )
     .then((r) => r.rows[0]);
@@ -39,6 +49,7 @@ export interface UserUpdate {
   email?: string;
   phone?: string | null;
   password_hash?: string;
+  telegram_chat_id?: string | null;
 }
 
 export const updateUser = (id: number, patch: UserUpdate) => {
@@ -47,12 +58,28 @@ export const updateUser = (id: number, patch: UserUpdate) => {
   const set = cols.map((c, i) => `${c} = $${i + 2}`).join(', ');
   const values = cols.map((c) => patch[c as keyof UserUpdate]);
   return pool
-    .query<AdminSummary>(`UPDATE users SET ${set} WHERE id = $1 RETURNING id, email, phone`, [id, ...values])
+    .query<AdminSummary>(`UPDATE users SET ${set} WHERE id = $1 RETURNING ${ADMIN_SUMMARY_COLS}`, [id, ...values])
     .then((r) => r.rows[0]);
 };
 
 export const deleteUser = (id: number) =>
   pool.query('DELETE FROM users WHERE id = $1', [id]).then((r) => r.rowCount! > 0);
+
+// Token de uso único do link de convite do admin (POST /api/admins/:id/telegram-link) — mesmo
+// mecanismo de contacts, tabela/coluna diferente.
+export const setAdminTelegramLinkToken = (id: number, token: string) =>
+  pool.query('UPDATE users SET telegram_link_token = $2 WHERE id = $1', [id, token]).then(() => undefined);
+
+export const getAdminByTelegramToken = (token: string) =>
+  pool.query<AdminSummary>(`SELECT ${ADMIN_SUMMARY_COLS} FROM users WHERE telegram_link_token = $1`, [token]).then((r) => r.rows[0]);
+
+export const linkAdminTelegramChat = (id: number, chatId: string) =>
+  pool
+    .query<AdminSummary>(
+      `UPDATE users SET telegram_chat_id = $2, telegram_link_token = NULL WHERE id = $1 RETURNING ${ADMIN_SUMMARY_COLS}`,
+      [id, chatId],
+    )
+    .then((r) => r.rows[0]);
 
 export interface Client {
   id: number;

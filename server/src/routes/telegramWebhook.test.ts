@@ -5,12 +5,16 @@ import { telegramWebhookRoutes } from './telegramWebhook.js';
 const mocks = vi.hoisted(() => ({
   getContactByTelegramToken: vi.fn(),
   linkTelegramChat: vi.fn(),
+  getAdminByTelegramToken: vi.fn(),
+  linkAdminTelegramChat: vi.fn(),
   notifyAdminsTelegramLinked: vi.fn(async () => undefined),
 }));
 
 vi.mock('../db/queries.js', () => ({
   getContactByTelegramToken: mocks.getContactByTelegramToken,
   linkTelegramChat: mocks.linkTelegramChat,
+  getAdminByTelegramToken: mocks.getAdminByTelegramToken,
+  linkAdminTelegramChat: mocks.linkAdminTelegramChat,
 }));
 vi.mock('../services/alertService.js', () => ({ notifyAdminsTelegramLinked: mocks.notifyAdminsTelegramLinked }));
 
@@ -100,6 +104,44 @@ describe('POST /api/telegram/webhook', () => {
 
     expect(res.statusCode).toBe(200);
     errorSpy.mockRestore();
+  });
+
+  it('token de admin (não é contato) vincula o chat_id do admin', async () => {
+    mocks.getContactByTelegramToken.mockResolvedValue(undefined);
+    mocks.getAdminByTelegramToken.mockResolvedValue({ id: 9, email: 'admin@x' });
+    const app = Fastify();
+    await app.register(telegramWebhookRoutes);
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/telegram/webhook',
+      headers: { 'x-telegram-bot-api-secret-token': SECRET },
+      payload: { message: { text: '/start tok-admin', chat: { id: 111222333 } } },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(mocks.getAdminByTelegramToken).toHaveBeenCalledWith('tok-admin');
+    expect(mocks.linkAdminTelegramChat).toHaveBeenCalledWith(9, '111222333');
+    expect(mocks.linkTelegramChat).not.toHaveBeenCalled();
+    expect(mocks.notifyAdminsTelegramLinked).not.toHaveBeenCalled();
+  });
+
+  it('token não bate com contato nem admin responde 200 sem vincular nada', async () => {
+    mocks.getContactByTelegramToken.mockResolvedValue(undefined);
+    mocks.getAdminByTelegramToken.mockResolvedValue(undefined);
+    const app = Fastify();
+    await app.register(telegramWebhookRoutes);
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/telegram/webhook',
+      headers: { 'x-telegram-bot-api-secret-token': SECRET },
+      payload: { message: { text: '/start tok-nenhum', chat: { id: 999 } } },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(mocks.linkTelegramChat).not.toHaveBeenCalled();
+    expect(mocks.linkAdminTelegramChat).not.toHaveBeenCalled();
   });
 
   it('mensagem sem /start é ignorada (200, sem tocar o banco)', async () => {
