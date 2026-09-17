@@ -8,6 +8,7 @@ import {
   evaluateHardware,
   isBackInBounds,
   notifyAdminsFirmwareUpdate,
+  notifyAdminsTelegramLinked,
   boundVars,
   sendContactTest,
   sendDailyReport,
@@ -931,5 +932,33 @@ describe('evaluate — por que a ligação de temperatura não saiu', () => {
 
     expect(queries.createNotification).toHaveBeenCalledWith(70, 5, 'telegram', 'skipped_no_telegram_chat_id');
     expect(enqueueTelegram).not.toHaveBeenCalled();
+  });
+});
+
+// Sem isso, o admin não tem como saber que um contato vinculou o Telegram sem entrar no
+// cadastro dele — ficava tendo que checar o painel toda hora.
+describe('notifyAdminsTelegramLinked', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('avisa os admins com telefone quando um contato vincula o Telegram', async () => {
+    vi.mocked(queries.listSensors).mockResolvedValue([{ id: 7 } as queries.Sensor]);
+    vi.mocked(queries.createResolvedAlert).mockResolvedValue({ id: 55 } as queries.Alert);
+    vi.mocked(queries.listAdminsWithPhone).mockResolvedValue([{ id: 3, email: 'a@x', phone: '+5511888888888' }]);
+
+    await notifyAdminsTelegramLinked({ id: 5, name: 'Fulano', client_id: 1 } as queries.Contact);
+
+    expect(queries.createResolvedAlert).toHaveBeenCalledWith(7, 'test', expect.stringContaining('Fulano'));
+    expect(enqueueWhatsapp).toHaveBeenCalledWith(
+      expect.objectContaining({ phone: '+5511888888888', text: expect.stringContaining('Fulano') }),
+    );
+  });
+
+  it('cliente sem sensor cadastrado não tenta avisar ninguém', async () => {
+    vi.mocked(queries.listSensors).mockResolvedValue([]);
+
+    await notifyAdminsTelegramLinked({ id: 5, name: 'Fulano', client_id: 1 } as queries.Contact);
+
+    expect(queries.createResolvedAlert).not.toHaveBeenCalled();
+    expect(enqueueWhatsapp).not.toHaveBeenCalled();
   });
 });

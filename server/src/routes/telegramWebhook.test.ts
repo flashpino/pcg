@@ -5,12 +5,14 @@ import { telegramWebhookRoutes } from './telegramWebhook.js';
 const mocks = vi.hoisted(() => ({
   getContactByTelegramToken: vi.fn(),
   linkTelegramChat: vi.fn(),
+  notifyAdminsTelegramLinked: vi.fn(async () => undefined),
 }));
 
 vi.mock('../db/queries.js', () => ({
   getContactByTelegramToken: mocks.getContactByTelegramToken,
   linkTelegramChat: mocks.linkTelegramChat,
 }));
+vi.mock('../services/alertService.js', () => ({ notifyAdminsTelegramLinked: mocks.notifyAdminsTelegramLinked }));
 
 const SECRET = 'segredo-teste';
 
@@ -62,8 +64,9 @@ describe('POST /api/telegram/webhook', () => {
     expect(mocks.linkTelegramChat).not.toHaveBeenCalled();
   });
 
-  it('token válido vincula o chat_id do contato', async () => {
+  it('token válido vincula o chat_id do contato e avisa os admins', async () => {
     mocks.getContactByTelegramToken.mockResolvedValue({ id: 5 });
+    mocks.linkTelegramChat.mockResolvedValue({ id: 5, name: 'Fulano' });
     const app = Fastify();
     await app.register(telegramWebhookRoutes);
 
@@ -77,6 +80,26 @@ describe('POST /api/telegram/webhook', () => {
     expect(res.statusCode).toBe(200);
     expect(mocks.getContactByTelegramToken).toHaveBeenCalledWith('tok-valido');
     expect(mocks.linkTelegramChat).toHaveBeenCalledWith(5, '999888777');
+    expect(mocks.notifyAdminsTelegramLinked).toHaveBeenCalledWith({ id: 5, name: 'Fulano' });
+  });
+
+  it('aviso ao admin falhando não derruba a resposta 200 (vínculo já está gravado)', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    mocks.getContactByTelegramToken.mockResolvedValue({ id: 5 });
+    mocks.linkTelegramChat.mockResolvedValue({ id: 5, name: 'Fulano' });
+    mocks.notifyAdminsTelegramLinked.mockRejectedValueOnce(new Error('cliente sem sensor'));
+    const app = Fastify();
+    await app.register(telegramWebhookRoutes);
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/telegram/webhook',
+      headers: { 'x-telegram-bot-api-secret-token': SECRET },
+      payload: { message: { text: '/start tok-valido', chat: { id: 999888777 } } },
+    });
+
+    expect(res.statusCode).toBe(200);
+    errorSpy.mockRestore();
   });
 
   it('mensagem sem /start é ignorada (200, sem tocar o banco)', async () => {

@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { getContactByTelegramToken, linkTelegramChat } from '../db/queries.js';
+import { notifyAdminsTelegramLinked } from '../services/alertService.js';
 
 interface TelegramUpdate {
   message?: {
@@ -27,7 +28,10 @@ export async function telegramWebhookRoutes(app: FastifyInstance): Promise<void>
 
     if (!req.body?.message?.chat?.id) return reply.send();
 
-    await linkTelegramChat(contact.id, String(req.body.message!.chat.id));
+    const linked = await linkTelegramChat(contact.id, String(req.body.message!.chat.id));
+    // Aviso ao admin não pode derrubar a resposta 200 pro Telegram — se falhar (ex. cliente sem
+    // sensor cadastrado pra pendurar o alerta sintético), o vínculo em si já está gravado.
+    notifyAdminsTelegramLinked(linked).catch((err) => console.error('aviso de vínculo Telegram falhou', err));
     reply.send();
   });
 }

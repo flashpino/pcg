@@ -282,6 +282,18 @@ async function notifyAdminsHardware(alert: Alert, kind: 'fire' | 'resolve', vars
   await notifyAdmins(alert, texts.whatsapp);
 }
 
+// Aviso pro admin quando um contato vincula o Telegram (clica no link de convite e dá /start no
+// bot) — sem isso não tem como saber que alguém se cadastrou sem entrar no cadastro do contato.
+// Mesmo padrão de alerta sintético já resolvido do welcome/test (routes/contacts.ts), só que
+// quem recebe aqui é o admin, não o próprio contato.
+export async function notifyAdminsTelegramLinked(contact: Contact): Promise<void> {
+  const sensors = await listSensors(contact.client_id);
+  const sensor = sensors[0];
+  if (!sensor) return; // cliente sem sensor cadastrado não tem onde pendurar o alerta sintético
+  const alert = await createResolvedAlert(sensor.id, 'test', `${contact.name} vinculou o Telegram`);
+  await notifyAdmins(alert, `✅ ${contact.name} vinculou o Telegram e já pode receber alertas por lá.`);
+}
+
 // Device vivo (heartbeat chegando) mas sem leitura válida — DHT travado/desconectado. É o caso
 // que antes se disfarçava de 'connectivity': sem leitura o firmware não ingeria nada, last_seen_at
 // congelava e o painel dizia "offline" um device com Wi-Fi perfeito, mandando a equipe caçar rede.
