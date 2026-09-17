@@ -66,6 +66,18 @@ export async function ingestRoutes(app: FastifyInstance): Promise<void> {
     const sensor = await getSensorByToken(token);
     if (!sensor) throw Object.assign(new Error('token inválido'), { statusCode: 401 });
 
+    // Série contínua do breadcrumb. O alerta de reboot só carrega o `diag` quando o boot_id muda,
+    // e o que interessa (heap e maior bloco contíguo caindo ao longo do boot) acontece justamente
+    // ENTRE dois reboots — quando o device ainda consegue falar. Logar aqui põe a série inteira no
+    // log do servidor sem tocar no schema. Antes do resto do handler de propósito: se o
+    // flushInflux estourar 500 lá embaixo, esta linha já foi registrada.
+    if (req.body.diag) {
+      req.log.info(
+        { sensor: sensor.name, fw: req.body.fw, boot_id: req.body.boot_id, diag: req.body.diag },
+        'device diag',
+      );
+    }
+
     const reboot = req.body.reset_reason
       ? decideReboot(req.body.reset_reason, req.body.boot_id, sensor.last_reset_reason)
       : null;
