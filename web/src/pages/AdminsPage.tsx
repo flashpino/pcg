@@ -5,31 +5,61 @@ interface Admin {
   id: number;
   email: string;
   phone: string | null;
+  telegram_chat_id: string | null;
 }
 
 function EditRow({ admin, onSaved, onCancel }: { admin: Admin; onSaved: () => void; onCancel: () => void }) {
   const [email, setEmail] = useState(admin.email);
   const [phone, setPhone] = useState(admin.phone ?? '');
+  const [telegramChatId, setTelegramChatId] = useState(admin.telegram_chat_id ?? '');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [telegramLink, setTelegramLink] = useState<string | null>(null);
+  const [linkCopied, setLinkCopied] = useState(false);
 
   async function save(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
     try {
-      await api.patch(`/api/admins/${admin.id}`, { email, phone, password: password || undefined });
+      await api.patch(`/api/admins/${admin.id}`, {
+        email,
+        phone,
+        telegram_chat_id: telegramChatId,
+        password: password || undefined,
+      });
       onSaved();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'falha ao salvar');
     }
   }
 
+  async function generateTelegramLink() {
+    const { url } = await api.post<{ url: string }>(`/api/admins/${admin.id}/telegram-link`);
+    setTelegramLink(url);
+    setLinkCopied(false);
+  }
+
+  async function copyTelegramLink() {
+    if (!telegramLink) return;
+    await navigator.clipboard.writeText(telegramLink);
+    setLinkCopied(true);
+    setTimeout(() => setLinkCopied(false), 1500);
+  }
+
   return (
     <tr>
-      <td colSpan={3}>
+      <td colSpan={4}>
         <form className="inline" onSubmit={save} style={{ marginBottom: 0 }}>
           <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
           <input placeholder="telefone (E.164)" type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} />
+          <input
+            placeholder="chat_id do Telegram (colar ou gerar link)"
+            value={telegramChatId}
+            onChange={(e) => setTelegramChatId(e.target.value)}
+          />
+          <button type="button" className="secondary" onClick={generateTelegramLink}>
+            Gerar link de convite
+          </button>
           <input
             placeholder="nova senha (opcional)"
             type="password"
@@ -41,6 +71,17 @@ function EditRow({ admin, onSaved, onCancel }: { admin: Admin; onSaved: () => vo
           <button type="button" className="secondary" onClick={onCancel}>Cancelar</button>
           {error && <span className="error" style={{ margin: 0 }}>{error}</span>}
         </form>
+        {telegramLink && (
+          <p style={{ marginTop: '0.4rem', marginBottom: 0 }}>
+            <small>
+              Envie ao admin:{' '}
+              <code style={{ cursor: 'pointer' }} title="Clique para copiar" onClick={copyTelegramLink}>
+                {telegramLink}
+              </code>
+              {linkCopied && ' (copiado!)'}
+            </small>
+          </p>
+        )}
       </td>
     </tr>
   );
@@ -112,6 +153,7 @@ export function AdminsPage() {
           <tr>
             <th>Email</th>
             <th>Telefone</th>
+            <th>Telegram</th>
             <th />
           </tr>
         </thead>
@@ -123,6 +165,7 @@ export function AdminsPage() {
               <tr key={a.id}>
                 <td>{a.email}</td>
                 <td>{a.phone ?? '—'}</td>
+                <td title={a.telegram_chat_id ? 'Vinculado' : 'Não vinculado'}>{a.telegram_chat_id ? '✈️' : '—'}</td>
                 <td>
                   <button className="secondary" onClick={() => setEditingId(a.id)}>
                     Editar
