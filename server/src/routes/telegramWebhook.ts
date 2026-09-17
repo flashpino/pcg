@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { getAdminByTelegramToken, getContactByTelegramToken, linkAdminTelegramChat, linkTelegramChat } from '../db/queries.js';
 import { notifyAdminsTelegramLinked } from '../services/alertService.js';
+import { sendWelcomeToChannel } from './contacts.js';
 
 interface TelegramUpdate {
   message?: {
@@ -31,9 +32,13 @@ export async function telegramWebhookRoutes(app: FastifyInstance): Promise<void>
     const contact = await getContactByTelegramToken(match[1]);
     if (contact) {
       const linked = await linkTelegramChat(contact.id, String(chatId));
-      // Aviso ao admin não pode derrubar a resposta 200 pro Telegram — se falhar (ex. cliente sem
-      // sensor cadastrado pra pendurar o alerta sintético), o vínculo em si já está gravado.
+      // Nem o aviso ao admin nem a boas-vindas podem derrubar a resposta 200 pro Telegram — se
+      // um dos dois falhar (ex. cliente sem sensor cadastrado pra pendurar o alerta sintético),
+      // o vínculo em si já está gravado.
       notifyAdminsTelegramLinked(linked).catch((err) => console.error('aviso de vínculo Telegram falhou', err));
+      // Confirmação pro próprio contato de que o vínculo deu certo — sem isso ele não tem
+      // nenhum retorno no chat depois de dar /start.
+      sendWelcomeToChannel(linked, 'telegram').catch((err) => console.error('boas-vindas por Telegram falhou', err));
       return reply.send();
     }
 

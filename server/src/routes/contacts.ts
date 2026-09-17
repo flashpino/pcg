@@ -14,6 +14,7 @@ import {
   setTelegramLinkToken,
   updateContact,
   upsertContactAlertPref,
+  type Contact,
   type ContactAlertPref,
   type ContactInput,
 } from '../db/queries.js';
@@ -30,6 +31,35 @@ async function syntheticAlertFor(clientId: number, message: string) {
   if (!sensor) throw Object.assign(new Error('cliente sem sensor cadastrado'), { statusCode: 400 });
   const alert = await createResolvedAlert(sensor.id, 'test', message);
   return { alert, sensor };
+}
+
+// Extraída pra routes/telegramWebhook.ts poder mandar a mesma boas-vindas quando o contato
+// confirma o vínculo (dá /start no bot) — um canal por vez, não os dois juntos como a rota
+// /welcome faz. Texto vem de message_templates (painel > Mensagens); env WELCOME_TEMPLATE segue
+// como fallback pra instalações antigas cujo banco ainda não tem a chave 'welcome'. Placeholder
+// %name% (não {{name}}) no env — {{...}} é sintaxe de template do EasyPanel e quebra a expansão
+// de env vars na UI dele antes mesmo do container subir.
+export async function sendWelcomeToChannel(contact: Contact, channel: 'whatsapp' | 'telegram'): Promise<void> {
+  const { alert, sensor } = await syntheticAlertFor(contact.client_id, `Boas-vindas para ${contact.name}`);
+  const tpl = await getMessageTemplate('welcome');
+  const client = await getClient(contact.client_id);
+  const latest = (await queryLatestReadings([sensor.id])).get(sensor.id);
+  const text = tpl
+    ? renderTemplate(tpl.whatsapp, {
+        nome: contact.name,
+        telefone: contact.phone,
+        cliente: client?.name ?? '',
+        sensor: sensor.name,
+        local: sensor.local ?? '',
+        temperatura: latest?.temperature ?? '',
+      })
+    : (process.env.WELCOME_TEMPLATE ?? 'Olá %name%! Você foi cadastrado no monitoramento Proatus.').replace('%name%', contact.name);
+
+  const notification = await createNotification(alert.id, contact.id, channel, 'queued', 'welcome');
+  const to = channel === 'telegram' ? contact.telegram_chat_id! : contact.phone;
+  const job = { notificationId: notification.id, phone: to, text };
+  if (channel === 'whatsapp') await enqueueWhatsapp(job);
+  else await enqueueTelegram(job);
 }
 
 export async function contactsRoutes(app: FastifyInstance): Promise<void> {
@@ -93,32 +123,12 @@ export async function contactsRoutes(app: FastifyInstance): Promise<void> {
     const contact = await getContact(Number(req.params.id));
     if (!contact) throw Object.assign(new Error('contato não encontrado'), { statusCode: 404 });
 
-    const { alert, sensor } = await syntheticAlertFor(contact.client_id, `Boas-vindas para ${contact.name}`);
-    // Texto vem de message_templates (painel > Mensagens); env WELCOME_TEMPLATE segue como
-    // fallback pra instalações antigas cujo banco ainda não tem a chave 'welcome'.
-    // Placeholder %name% (não {{name}}) no env — {{...}} é sintaxe de template do EasyPanel e
-    // quebra a expansão de env vars na UI dele antes mesmo do container subir.
-    const tpl = await getMessageTemplate('welcome');
-    const client = await getClient(contact.client_id);
-    const latest = (await queryLatestReadings([sensor.id])).get(sensor.id);
-    const text = tpl
-      ? renderTemplate(tpl.whatsapp, {
-          nome: contact.name,
-          telefone: contact.phone,
-          cliente: client?.name ?? '',
-          sensor: sensor.name,
-          local: sensor.local ?? '',
-          temperatura: latest?.temperature ?? '',
-        })
-      : (process.env.WELCOME_TEMPLATE ?? 'Olá %name%! Você foi cadastrado no monitoramento Proatus.').replace('%name%', contact.name);
-    const notification = await createNotification(alert.id, contact.id, 'whatsapp', 'queued', 'welcome');
-    await enqueueWhatsapp({ notificationId: notification.id, phone: contact.phone, text });
+    await sendWelcomeToChannel(contact, 'whatsapp');
     // Somado ao WhatsApp (que continua incondicional, sem checar channel_whatsapp, igual sempre
     // foi) — só dispara se o contato já tiver Telegram ligado E vinculado (na maioria dos casos,
     // cadastro novo, ainda não vinculou nada; dispara em boas-vindas reenviadas depois do link).
     if (contact.channel_telegram && contact.telegram_chat_id) {
-      const tg = await createNotification(alert.id, contact.id, 'telegram', 'queued', 'welcome');
-      await enqueueTelegram({ notificationId: tg.id, phone: contact.telegram_chat_id, text });
+      await sendWelcomeToChannel(contact, 'telegram');
     }
     return { ok: true };
   });
