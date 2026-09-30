@@ -708,14 +708,24 @@ static void onIpBack(lv_event_t* e) {
   showMenu();
 }
 
+static lv_obj_t* ipErrorLabel;
+
 static void onIpSave(lv_event_t* e) {
   storage::StaticIpConfig cfg;
   cfg.enabled = !lv_obj_has_state(ipDhcpSwitch, LV_STATE_CHECKED);
   if (cfg.enabled) {
-    cfg.ip.fromString(lv_textarea_get_text(ipAddrArea));
-    cfg.gateway.fromString(lv_textarea_get_text(ipGwArea));
-    cfg.subnet.fromString(lv_textarea_get_text(ipMaskArea));
-    cfg.dns.fromString(lv_textarea_get_text(ipDnsArea));
+    // IP fixo com campo vazio/errado gravava 0.0.0.0 e a tela mostrava isso como se fosse um IP.
+    // fromString() devolve false pra texto inválido — recusar aqui em vez de gravar lixo.
+    bool ok = cfg.ip.fromString(lv_textarea_get_text(ipAddrArea)) &&
+              cfg.gateway.fromString(lv_textarea_get_text(ipGwArea)) &&
+              cfg.subnet.fromString(lv_textarea_get_text(ipMaskArea)) &&
+              cfg.ip != IPAddress(0, 0, 0, 0) && cfg.gateway != IPAddress(0, 0, 0, 0);
+    if (!ok) {
+      lv_label_set_text(ipErrorLabel, "IP invalido");
+      return;
+    }
+    // DNS vazio = usa o gateway, que é o DNS que o DHCP entregaria nessa rede.
+    if (!cfg.dns.fromString(lv_textarea_get_text(ipDnsArea))) cfg.dns = cfg.gateway;
   }
   storage::saveStaticIp(cfg);
   // WiFi.config() só é aplicado antes do WiFi.begin() — com o device já conectado, a config nova
@@ -736,38 +746,62 @@ static void onIpFieldClicked(lv_event_t* e) {
   lv_keyboard_set_mode(textInputKb, LV_KEYBOARD_MODE_SPECIAL);
 }
 
-static lv_obj_t* makeIpField(lv_obj_t* parent, const char* label) {
-  lv_obj_t* lbl = lv_label_create(parent);
+// Uma linha por campo (rótulo à esquerda, campo à direita) em posição fixa: 4 linhas de 38px cabem
+// entre o cabeçalho e o Salvar. A coluna flex antiga empilhava rótulo+campo, não cabia e virava
+// uma caixa com rolagem onde só 2 campos apareciam.
+static lv_obj_t* ipFields;  // container dos 4 campos — some com DHCP ligado
+
+static lv_obj_t* makeIpField(int row, const char* label, const char* example) {
+  const lv_coord_t y = row * 38;
+  lv_obj_t* lbl = lv_label_create(ipFields);
   lv_label_set_text(lbl, label);
-  lv_obj_t* ta = lv_textarea_create(parent);
-  lv_obj_set_size(ta, SCREEN_W - 20, 24);
+  lv_obj_set_pos(lbl, 0, y + 7);
+  lv_obj_t* ta = lv_textarea_create(ipFields);
+  lv_obj_set_size(ta, SCREEN_W - 100, 34);
+  lv_obj_set_pos(ta, 84, y);
   lv_textarea_set_one_line(ta, true);
+  lv_textarea_set_placeholder_text(ta, example);
+  lv_obj_clear_flag(ta, LV_OBJ_FLAG_SCROLLABLE);
   lv_obj_add_event_cb(ta, onIpFieldClicked, LV_EVENT_CLICKED, const_cast<char*>(label));
   return ta;
+}
+
+static void syncIpFieldsVisibility() {
+  if (lv_obj_has_state(ipDhcpSwitch, LV_STATE_CHECKED)) lv_obj_add_flag(ipFields, LV_OBJ_FLAG_HIDDEN);
+  else lv_obj_clear_flag(ipFields, LV_OBJ_FLAG_HIDDEN);
+  lv_label_set_text(ipErrorLabel, "");
 }
 
 static void buildIpConfigScreen() {
   scrIpConfig = lv_obj_create(NULL);
   makeBackButton(scrIpConfig, onIpBack);
 
+  // Ligado = DHCP (IP automático do roteador); desligado = IP fixo digitado abaixo.
   ipDhcpSwitch = lv_switch_create(scrIpConfig);
   lv_obj_align(ipDhcpSwitch, LV_ALIGN_TOP_RIGHT, -8, 8);
+  lv_obj_add_event_cb(ipDhcpSwitch, [](lv_event_t*) { syncIpFieldsVisibility(); }, LV_EVENT_VALUE_CHANGED, nullptr);
   lv_obj_t* dhcpLbl = lv_label_create(scrIpConfig);
-  lv_label_set_text(dhcpLbl, "DHCP");  // ligado = DHCP (automático); desligado = IP fixo
-  lv_obj_align_to(dhcpLbl, ipDhcpSwitch, LV_ALIGN_OUT_LEFT_MID, -6, 0);
+  lv_label_set_text(dhcpLbl, "IP automatico");
+  lv_obj_align_to(dhcpLbl, ipDhcpSwitch, LV_ALIGN_OUT_LEFT_MID, -8, 0);
 
-  lv_obj_t* col = lv_obj_create(scrIpConfig);
-  lv_obj_set_size(col, SCREEN_W - 20, SCREEN_H - 60);
-  lv_obj_align(col, LV_ALIGN_BOTTOM_MID, 0, -30);
-  lv_obj_set_flex_flow(col, LV_FLEX_FLOW_COLUMN);
+  ipFields = lv_obj_create(scrIpConfig);
+  lv_obj_remove_style_all(ipFields);
+  lv_obj_set_size(ipFields, SCREEN_W - 16, 4 * 38);
+  lv_obj_set_pos(ipFields, 8, 44);
+  lv_obj_clear_flag(ipFields, LV_OBJ_FLAG_SCROLLABLE);
 
-  ipAddrArea = makeIpField(col, "IP");
-  ipGwArea = makeIpField(col, "Gateway");
-  ipMaskArea = makeIpField(col, "Máscara");
-  ipDnsArea = makeIpField(col, "DNS");
+  ipAddrArea = makeIpField(0, "IP", "192.168.15.200");
+  ipGwArea = makeIpField(1, "Gateway", "192.168.15.1");
+  ipMaskArea = makeIpField(2, "Mascara", "255.255.255.0");  // sem acento: a fonte não tem o glifo
+  ipDnsArea = makeIpField(3, "DNS", "8.8.8.8");
+
+  ipErrorLabel = lv_label_create(scrIpConfig);
+  lv_obj_set_style_text_color(ipErrorLabel, lv_palette_main(LV_PALETTE_RED), 0);
+  lv_obj_align(ipErrorLabel, LV_ALIGN_BOTTOM_LEFT, 8, -14);
+  lv_label_set_text(ipErrorLabel, "");
 
   lv_obj_t* saveBtn = lv_btn_create(scrIpConfig);
-  lv_obj_align(saveBtn, LV_ALIGN_BOTTOM_MID, 0, -4);
+  lv_obj_align(saveBtn, LV_ALIGN_BOTTOM_RIGHT, -8, -4);
   lv_obj_t* saveLbl = lv_label_create(saveBtn);
   lv_label_set_text(saveLbl, "Salvar");
   lv_obj_add_event_cb(saveBtn, onIpSave, LV_EVENT_CLICKED, nullptr);
@@ -777,12 +811,18 @@ static void buildIpConfigScreen() {
 // "Salvar" sem mexer em nada apagava o IP fixo configurado.
 static void showIpConfig() {
   storage::StaticIpConfig cfg = storage::loadStaticIp();
-  if (cfg.enabled) lv_obj_clear_state(ipDhcpSwitch, LV_STATE_CHECKED);
+  // IP fixo 0.0.0.0 (gravado pela tela antiga, sem validação) na prática é DHCP — o WiFi.config()
+  // com IP zerado cai no DHCP. Mostrar como tal em vez de "0.0.0.0" nos campos.
+  const IPAddress zero(0, 0, 0, 0);
+  bool fixed = cfg.enabled && cfg.ip != zero;
+  auto txt = [&](const IPAddress& a) { return (fixed && a != zero) ? a.toString() : String(""); };
+  if (fixed) lv_obj_clear_state(ipDhcpSwitch, LV_STATE_CHECKED);
   else lv_obj_add_state(ipDhcpSwitch, LV_STATE_CHECKED);
-  lv_textarea_set_text(ipAddrArea, cfg.enabled ? cfg.ip.toString().c_str() : "");
-  lv_textarea_set_text(ipGwArea, cfg.enabled ? cfg.gateway.toString().c_str() : "");
-  lv_textarea_set_text(ipMaskArea, cfg.enabled ? cfg.subnet.toString().c_str() : "255.255.255.0");
-  lv_textarea_set_text(ipDnsArea, cfg.enabled ? cfg.dns.toString().c_str() : "");
+  lv_textarea_set_text(ipAddrArea, txt(cfg.ip).c_str());
+  lv_textarea_set_text(ipGwArea, txt(cfg.gateway).c_str());
+  lv_textarea_set_text(ipMaskArea, fixed ? cfg.subnet.toString().c_str() : "255.255.255.0");
+  lv_textarea_set_text(ipDnsArea, txt(cfg.dns).c_str());
+  syncIpFieldsVisibility();
   lv_scr_load(scrIpConfig);
 }
 
