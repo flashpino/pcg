@@ -1,6 +1,6 @@
 import Fastify from 'fastify';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { decideReboot, ingestRoutes, isValidIngestReadings } from './ingest.js';
+import { decideReboot, filterIngestReadings, ingestRoutes } from './ingest.js';
 
 const mocks = vi.hoisted(() => ({
   flushInflux: vi.fn(async () => {}),
@@ -101,35 +101,53 @@ describe('POST /api/ingest', () => {
     const gravouPresenca = mocks.updateSensor.mock.calls.some(([, patch]) => patch?.last_seen_at);
     expect(gravouPresenca).toBe(true);
   });
+
+  // Mesmo incidente do proatus_B678, pelo outro lado: qualquer erro antes da gravação de presença
+  // (aqui, notificar o reboot) se repete a cada reenvio e congela o last_seen_at.
+  it('registra presença mesmo se notificar o reboot falhar', async () => {
+    const { notifyAdminsReboot } = await import('../services/alertService.js');
+    vi.mocked(notifyAdminsReboot).mockRejectedValueOnce(new Error('whatsapp fora'));
+
+    const app = Fastify();
+    await app.register(ingestRoutes);
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/ingest',
+      headers: { 'x-device-token': 'tok' },
+      payload: { readings: [boa], fw: '1.1.41', reset_reason: 'panic', boot_id: 3 },
+    });
+    await app.close();
+
+    expect(res.statusCode).toBe(500);
+    const gravouPresenca = mocks.updateSensor.mock.calls.some(([, patch]) => patch?.last_seen_at);
+    expect(gravouPresenca).toBe(true);
+  });
 });
 
-describe('isValidIngestReadings', () => {
+describe('filterIngestReadings', () => {
   // Regressão de campo (2026-07-28): com o DHT22 morto o firmware não enfileirava nenhuma leitura,
   // então nunca chamava /api/ingest — last_seen_at congelava e o painel rotulava "offline" um
   // device que estava online com sinal excelente. O heartbeat precisa ser aceito sem leituras.
   it('heartbeat sem leituras é aceito quando o device declara sensor travado', () => {
-    expect(isValidIngestReadings([], true)).toBe(true);
+    expect(filterIngestReadings([], true)).toEqual([]);
   });
 
   it('lote vazio sem declaração de sensor travado continua rejeitado', () => {
-    expect(isValidIngestReadings([], false)).toBe(false);
+    expect(filterIngestReadings([], false)).toBeNull();
   });
 
   it('leituras válidas passam normalmente', () => {
-    expect(isValidIngestReadings([boa], false)).toBe(true);
+    expect(filterIngestReadings([boa], false)).toEqual([boa]);
   });
 
-  it('leitura fora de faixa é rejeitada', () => {
-    expect(isValidIngestReadings([{ ...boa, temp: 999 }], false)).toBe(false);
+  // Regressão de campo (proatus_B678): rejeitar o lote inteiro fazia o device reenviar o mesmo
+  // lote pra sempre — offline no painel com a rede de pé. O ponto ruim sai, o resto entra.
+  it('leitura fora de faixa é descartada sem derrubar o lote', () => {
+    expect(filterIngestReadings([{ ...boa, temp: 999 }, boa, { ...boa, hum: null }], false)).toEqual([boa]);
   });
 
   // O teto de 400 é defesa de fronteira (device remoto) — sensor travado não é passe livre.
   it('lote acima de 400 é rejeitado mesmo com sensor travado', () => {
-    expect(isValidIngestReadings(new Array(401).fill(boa), true)).toBe(false);
-  });
-
-  // Um device que se diz travado mas manda leitura junto: a leitura vale, e ainda tem que ser boa.
-  it('sensor travado com leitura inválida junto é rejeitado', () => {
-    expect(isValidIngestReadings([{ ...boa, hum: 300 }], true)).toBe(false);
+    expect(filterIngestReadings(new Array(401).fill(boa), true)).toBeNull();
   });
 });

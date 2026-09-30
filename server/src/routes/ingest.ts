@@ -51,10 +51,14 @@ export function decideReboot(
   return { key, quiet: prev.split('#')[0] === resetReason };
 }
 
-export function isValidIngestReadings(readings: unknown[], sensorStale: boolean): boolean {
-  if (readings.length > 400) return false;
-  if (readings.length === 0) return sensorStale;
-  return readings.every((r) => isValidReading(r as Partial<Reading>));
+// Leitura inválida é DESCARTADA, não derruba o lote. Rejeitar o lote inteiro com 400 envenenava o
+// device: o firmware não tira do buffer um lote que não recebeu 200 e reenvia o mesmo lote pra
+// sempre — servidor respondendo, então nem o reboot de self-heal disparava. Um ponto ruim
+// travava o sensor em "offline" indefinidamente. null = requisição recusada de fato.
+export function filterIngestReadings(readings: unknown[], sensorStale: boolean): Reading[] | null {
+  if (readings.length > 400) return null;
+  if (readings.length === 0) return sensorStale ? [] : null;
+  return readings.filter((r): r is Reading => isValidReading(r as Partial<Reading>));
 }
 
 export async function ingestRoutes(app: FastifyInstance): Promise<void> {
@@ -65,6 +69,22 @@ export async function ingestRoutes(app: FastifyInstance): Promise<void> {
     }
     const sensor = await getSensorByToken(token);
     if (!sensor) throw Object.assign(new Error('token inválido'), { statusCode: 401 });
+
+    // PRESENÇA LOGO APÓS AUTENTICAR, antes de qualquer coisa que possa lançar. Incidente 1: o
+    // last_seen_at ficava depois do flushInflux(), e uma falha do Influx dava a FROTA como offline
+    // (alerta falso pros clientes) com cada device reiniciando de 10 em 10 min em lockstep.
+    // Incidente 2 (proatus_B678): validação do lote e notifyAdminsReboot também rodavam antes
+    // dele — qualquer 400/500 ali, repetido a cada reenvio, deixava um device conectado, na mesma
+    // rede que outros online, marcado offline pra sempre. "O sensor falou comigo" é fato
+    // independente do que acontece com o payload depois.
+    await updateSensor(sensor.id, {
+      last_seen_at: new Date().toISOString(),
+      ...(typeof req.body?.fw === 'string' && req.body.fw ? { last_firmware: req.body.fw } : {}),
+      ...(req.body?.variant ? { last_variant: req.body.variant } : {}),
+      // Sincroniza com o nome configurado no menu do device — sem isso ficava preso no
+      // "novo-<mac>" do provisionamento pra sempre (device_name chegava mas nunca era lido).
+      ...(req.body?.device_name && req.body.device_name !== sensor.name ? { name: req.body.device_name } : {}),
+    });
 
     // Série contínua do breadcrumb. O alerta de reboot só carrega o `diag` quando o boot_id muda,
     // e o que interessa (heap e maior bloco contíguo caindo ao longo do boot) acontece justamente
@@ -92,14 +112,19 @@ export async function ingestRoutes(app: FastifyInstance): Promise<void> {
 
     const readings = req.body?.readings ?? [];
     const sensorStale = req.body?.sensor_stale === true;
-    if (!isValidIngestReadings(readings, sensorStale)) {
-      throw Object.assign(new Error('readings inválidas'), { statusCode: 400 });
+    const valid = filterIngestReadings(readings, sensorStale);
+    if (!valid) throw Object.assign(new Error('readings inválidas'), { statusCode: 400 });
+    if (valid.length < readings.length) {
+      req.log.warn(
+        { sensor: sensor.name, descartadas: readings.filter((r) => !valid.includes(r as Reading)) },
+        'leituras inválidas descartadas',
+      );
     }
     if (typeof req.body.fw !== 'string' || !req.body.fw) {
       throw Object.assign(new Error('fw obrigatório'), { statusCode: 400 });
     }
 
-    const calibrated = readings.map((r) => ({ ...r, temp: r.temp + sensor.temp_offset }));
+    const calibrated = valid.map((r) => ({ ...r, temp: r.temp + sensor.temp_offset }));
 
     // Só notifica se já havia uma versão anterior registrada — sem isso o 1º ingest de todo
     // sensor recém-provisionado (last_firmware ainda NULL) dispararia um "atualizou" falso.
@@ -107,22 +132,6 @@ export async function ingestRoutes(app: FastifyInstance): Promise<void> {
       req.log.info({ sensor: sensor.name, de: sensor.last_firmware, para: req.body.fw }, 'firmware reportado mudou');
       if (sensor.last_firmware) await notifyAdminsFirmwareUpdate(sensor, sensor.last_firmware, req.body.fw);
     }
-
-    // PRESENÇA ANTES DO ARMAZENAMENTO, e a ordem aqui é o conserto de um incidente real: o
-    // last_seen_at ficava depois do flushInflux(), então uma falha do Influx derrubava a
-    // requisição antes desta linha. O device tinha chegado e sido atendido, mas não ficava
-    // registro disso — o sweep de conectividade dava a FROTA como offline (alerta falso de
-    // queda pros clientes) e cada device, vendo o 5xx, reiniciava de 10 em 10 min em lockstep.
-    // "O sensor falou comigo" é fato independente de o banco de séries ter aceitado os pontos;
-    // misturar as duas coisas transformava um soluço do Influx em apagão da frota inteira.
-    await updateSensor(sensor.id, {
-      last_seen_at: new Date().toISOString(),
-      last_firmware: req.body.fw,
-      ...(req.body.variant ? { last_variant: req.body.variant } : {}),
-      // Sincroniza com o nome configurado no menu do device — sem isso ficava preso no
-      // "novo-<mac>" do provisionamento pra sempre (device_name chegava mas nunca era lido).
-      ...(req.body.device_name && req.body.device_name !== sensor.name ? { name: req.body.device_name } : {}),
-    });
 
     // Heartbeat de sensor travado não tem ponto pra gravar — pular o Influx aqui é o que permite
     // o device seguir marcando presença (last_seen_at) mesmo sem nenhuma leitura.
