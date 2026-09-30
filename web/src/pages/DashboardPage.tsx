@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api.js';
 import { DeviceCard, type DeviceCardData } from '../components/DeviceCard.js';
+import { ClientSensorDetailPage } from './ClientSensorDetailPage.js';
 
 interface Kpis {
   activeClients: number;
@@ -21,6 +22,7 @@ interface DashboardData {
 export function DashboardPage() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [openId, setOpenId] = useState<number | null>(null);
 
   useEffect(() => {
     const load = () => api.get<DashboardData>('/api/dashboard').then(setData).catch((err) => setError(err.message));
@@ -33,6 +35,9 @@ export function DashboardPage() {
   if (!data) return null;
 
   const { kpis, devices } = data;
+
+  const open = devices.find((d) => d.id === openId);
+  if (open) return <ClientSensorDetailPage sensor={open} onBack={() => setOpenId(null)} apiBase="/api" />;
 
   return (
     <main>
@@ -69,7 +74,7 @@ export function DashboardPage() {
       </div>
       <div className="device-grid">
         {devices.map((d) => (
-          <DeviceCard key={d.id} device={d} secondaryLabel={`${d.client_name} — ${d.name}`} />
+          <DeviceCard key={d.id} device={d} secondaryLabel={`${d.client_name} — ${d.name}`} onClick={() => setOpenId(d.id)} />
         ))}
       </div>
     </main>
