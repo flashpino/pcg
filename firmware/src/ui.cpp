@@ -895,10 +895,12 @@ static void showNetInfo() {
 
   char buf[400];
   snprintf(buf, sizeof(buf),
-           "Nome: %s\nSSID: %s\nIP: %s\nMascara: %s\nGateway: %s\nDNS: %s\nMAC: %s\nRSSI: %d dBm\nUptime: %lus\nSensor: %s",
+           // AP = BSSID do nó da mesh (mesmo SSID, nós diferentes). Uptime foi pra linha do RSSI
+           // pra caber: a tela já estava cheia.
+           "Nome: %s\nSSID: %s\nIP: %s\nMascara: %s\nGateway: %s\nDNS: %s\nMAC: %s\nAP: %s c%d\nRSSI: %d dBm  Up: %lus\nSensor: %s",
            storage::loadDeviceName().c_str(), WiFi.SSID().c_str(), WiFi.localIP().toString().c_str(),
            WiFi.subnetMask().toString().c_str(), WiFi.gatewayIP().toString().c_str(), WiFi.dnsIP().toString().c_str(),
-           WiFi.macAddress().c_str(), WiFi.RSSI(), millis() / 1000,
+           WiFi.macAddress().c_str(), WiFi.BSSIDstr().c_str(), WiFi.channel(), WiFi.RSSI(), millis() / 1000,
            lastNetEvent.sensorStale ? "sem resposta" : "OK");
   lv_label_set_text(netInfoLabel, buf);
 

@@ -211,6 +211,13 @@ static bool ensureConnected() {
   storage::StaticIpConfig ip = storage::loadStaticIp();
   if (ip.enabled) WiFi.config(ip.ip, ip.gateway, ip.subnet, ip.dns);
 
+  // Default do Arduino é WIFI_FAST_SCAN: associa no PRIMEIRO AP com o SSID que achar, e o sort por
+  // sinal só vale com varredura completa. Em rede mesh isso prendia o device num nó distante
+  // (proatus_B678: -73 dBm com outro nó a -38 na mesma sala) cujo backhaul não levava à internet.
+  // Varrer tudo e escolher o mais forte custa ~1-2s a mais por conexão, só na (re)conexão.
+  WiFi.setScanMethod(WIFI_ALL_CHANNEL_SCAN);
+  WiFi.setSortMethod(WIFI_CONNECT_AP_BY_SIGNAL);
+
   WiFi.begin(creds.ssid.c_str(), creds.password.c_str());
 
   uint32_t waited = 0;
@@ -420,11 +427,14 @@ static IngestResult sendIngest(const Reading* batch, size_t count, bool sensorSt
   // (dezenas de KB). Com o heap fragmentado, h fica alto (100k+) e mesmo assim TODO POST falha
   // por falta de bloco — o device conta "ninguem respondeu" e reinicia em 10min, sem que nada
   // do lado do servidor esteja errado. h alto com m baixo e a assinatura desse caso.
-  char diag[96];
-  snprintf(diag, sizeof(diag), "b%lu n%u u%u h%uk m%uk pm%uk s%u up%lus", (unsigned long)bootCount,
+  // ap/r = BSSID e sinal do nó da mesh em que o device está: mesmo SSID, nós diferentes, e um nó
+  // com backhaul ruim deixa o device na rede local sem chegar na internet.
+  char diag[128];
+  snprintf(diag, sizeof(diag), "b%lu n%u u%u h%uk m%uk pm%uk s%u up%lus ap%s r%d", (unsigned long)bootCount,
            prevStageNet, prevStageUi, (unsigned)(ESP.getFreeHeap() / 1024),
            (unsigned)(ESP.getMaxAllocHeap() / 1024), (unsigned)prevMinBlockKb,
-           (unsigned)uxTaskGetStackHighWaterMark(nullptr), (unsigned long)(millis() / 1000));
+           (unsigned)uxTaskGetStackHighWaterMark(nullptr), (unsigned long)(millis() / 1000),
+           WiFi.BSSIDstr().c_str(), WiFi.RSSI());
   doc["diag"] = diag;
   doc["boot_id"] = bootCount;
 
