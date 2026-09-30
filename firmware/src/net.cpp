@@ -378,6 +378,42 @@ static const char* resetReasonStr() {
   }
 }
 
+// --- Sonda de conectividade -------------------------------------------------------------------
+// proatus_B678: Wi-Fi forte, rede local e DNS ok, mas todo TCP pro servidor expirava — com os
+// outros devices da mesma rede online. Sem saber se o device chega em QUALQUER lugar da internet
+// ou só não chega no nosso servidor, cada hipótese (sinal, IP, nó da mesh) era um chute. Roda só
+// quando o ingest fica sem resposta; resultado vai pra serial e pro diag do próximo ingest que
+// passar. pub = IP público de saída (distingue qual link, se o site tiver mais de um).
+static char lastProbe[80] = "";
+
+static const char* tcpProbe(const IPAddress& ip, uint16_t port) {
+  WiFiClient c;
+  esp_task_wdt_reset();
+  bool ok = c.connect(ip, port, 3000);
+  c.stop();
+  return ok ? "ok" : "x";
+}
+
+static void runConnectivityProbe() {
+  IPAddress srv;
+  bool dns = WiFi.hostByName("painel.proatus.app", srv);
+  String pub = "?";
+  {
+    HTTPClient http;
+    http.setConnectTimeout(3000);
+    http.setTimeout(3000);
+    esp_task_wdt_reset();
+    if (http.begin("http://api.ipify.org") && http.GET() == 200) pub = http.getString();
+    http.end();
+  }
+  snprintf(lastProbe, sizeof(lastProbe), "pr[cf443=%s srv443=%s srv80=%s dns=%s pub=%s]",
+           tcpProbe(IPAddress(1, 1, 1, 1), 443), dns ? tcpProbe(srv, 443) : "-",
+           dns ? tcpProbe(srv, 80) : "-", dns ? srv.toString().c_str() : "falhou", pub.c_str());
+  // log_e e não Serial.printf: no campo o Serial.printf desta task não aparecia na serial, só os
+  // log_* do framework (que escrevem direto na UART).
+  log_e("[probe] %s", lastProbe);
+}
+
 // --- Ingest ------------------------------------------------------------------------------------
 struct IngestResult {
   bool ok;
@@ -429,12 +465,12 @@ static IngestResult sendIngest(const Reading* batch, size_t count, bool sensorSt
   // do lado do servidor esteja errado. h alto com m baixo e a assinatura desse caso.
   // ap/r = BSSID e sinal do nó da mesh em que o device está: mesmo SSID, nós diferentes, e um nó
   // com backhaul ruim deixa o device na rede local sem chegar na internet.
-  char diag[128];
-  snprintf(diag, sizeof(diag), "b%lu n%u u%u h%uk m%uk pm%uk s%u up%lus ap%s r%d", (unsigned long)bootCount,
+  char diag[208];
+  snprintf(diag, sizeof(diag), "b%lu n%u u%u h%uk m%uk pm%uk s%u up%lus ap%s r%d %s", (unsigned long)bootCount,
            prevStageNet, prevStageUi, (unsigned)(ESP.getFreeHeap() / 1024),
            (unsigned)(ESP.getMaxAllocHeap() / 1024), (unsigned)prevMinBlockKb,
            (unsigned)uxTaskGetStackHighWaterMark(nullptr), (unsigned long)(millis() / 1000),
-           WiFi.BSSIDstr().c_str(), WiFi.RSSI());
+           WiFi.BSSIDstr().c_str(), WiFi.RSSI(), lastProbe);
   doc["diag"] = diag;
   doc["boot_id"] = bootCount;
 
@@ -444,6 +480,13 @@ static IngestResult sendIngest(const Reading* batch, size_t count, bool sensorSt
   // Código negativo = erro do lado do cliente (sem conexão, timeout, TLS): ninguém atendeu.
   // Qualquer código HTTP, mesmo 500, significa que a nuvem respondeu.
   result.answered = code > 0;
+  // Aqui dentro e não no laço de drenagem: o heartbeat (sensor travado) também chama sendIngest,
+  // e com a sonda só no laço ela nunca rodou no B678 — cobre os dois caminhos.
+  if (!result.answered) {
+    http.end();
+    runConnectivityProbe();
+    return result;
+  }
 
   // 401 = o sensor foi deletado no painel (DELETE físico leva o device_token junto). O token
   // gravado aqui nunca mais vai valer, e o servidor não tem como reemitir: o corpo do ingest
