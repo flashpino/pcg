@@ -610,7 +610,15 @@ static void showWifiList() {
 static void pollWifiScan() {}
 
 // --- Tela de texto genérica (senha wifi / nome / pin) -------------------------------------
+static lv_obj_t* ipEditingArea = nullptr;  // campo da tela de IP sendo editado no teclado
+
 static void onTextInputCancel(lv_event_t* e) {
+  // Cancelar a edição de um campo de IP volta pra tela de IP, sem perder os outros campos.
+  if (ipEditingArea) {
+    ipEditingArea = nullptr;
+    lv_scr_load(scrIpConfig);
+    return;
+  }
   showMenu();
 }
 
@@ -653,6 +661,8 @@ static const lv_btnmatrix_ctrl_t kKbCtrlSpec[] = {
     1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
     LV_KEYBOARD_CTRL_BTN_FLAGS | 2, 6, LV_KEYBOARD_CTRL_BTN_FLAGS | 2};
 
+static lv_obj_t* textInputKb;
+
 static void buildTextInputScreen() {
   scrTextInput = lv_obj_create(NULL);
   makeBackButton(scrTextInput, onTextInputCancel);
@@ -667,7 +677,7 @@ static void buildTextInputScreen() {
   lv_obj_align(textInputArea, LV_ALIGN_TOP_MID, 0, 40);
   lv_textarea_set_one_line(textInputArea, true);
 
-  lv_obj_t* kb = lv_keyboard_create(scrTextInput);
+  lv_obj_t* kb = textInputKb = lv_keyboard_create(scrTextInput);
   lv_obj_set_style_text_font(kb, &lv_font_montserrat_28, 0);
   lv_obj_set_size(kb, SCREEN_W, SCREEN_H - 74);
   lv_obj_align(kb, LV_ALIGN_BOTTOM_MID, 0, 0);
@@ -683,6 +693,7 @@ static void showTextInput(const char* title, const char* placeholder, void (*onS
   lv_label_set_text(textInputTitle, title);
   lv_textarea_set_text(textInputArea, placeholder);
   textInputSubmitCb = onSubmit;
+  lv_keyboard_set_mode(textInputKb, LV_KEYBOARD_MODE_TEXT_LOWER);
   lv_scr_load(scrTextInput);
 }
 
@@ -707,7 +718,22 @@ static void onIpSave(lv_event_t* e) {
     cfg.dns.fromString(lv_textarea_get_text(ipDnsArea));
   }
   storage::saveStaticIp(cfg);
-  showMenu();
+  // WiFi.config() só é aplicado antes do WiFi.begin() — com o device já conectado, a config nova
+  // ficava gravada sem efeito até o próximo reboot. Reiniciar é o jeito de aplicar agora.
+  ESP.restart();
+}
+
+// Os campos não tinham teclado: tocar neles não fazia nada e não havia como digitar o IP.
+// Reaproveita a tela de texto (a mesma do Wi-Fi/PIN), já aberta no modo numérico.
+static void onIpFieldClicked(lv_event_t* e) {
+  ipEditingArea = lv_event_get_target(e);
+  showTextInput(static_cast<const char*>(lv_event_get_user_data(e)), lv_textarea_get_text(ipEditingArea),
+                [](const String& value) {
+                  lv_textarea_set_text(ipEditingArea, value.c_str());
+                  ipEditingArea = nullptr;
+                  lv_scr_load(scrIpConfig);
+                });
+  lv_keyboard_set_mode(textInputKb, LV_KEYBOARD_MODE_SPECIAL);
 }
 
 static lv_obj_t* makeIpField(lv_obj_t* parent, const char* label) {
@@ -716,6 +742,7 @@ static lv_obj_t* makeIpField(lv_obj_t* parent, const char* label) {
   lv_obj_t* ta = lv_textarea_create(parent);
   lv_obj_set_size(ta, SCREEN_W - 20, 24);
   lv_textarea_set_one_line(ta, true);
+  lv_obj_add_event_cb(ta, onIpFieldClicked, LV_EVENT_CLICKED, const_cast<char*>(label));
   return ta;
 }
 
@@ -725,7 +752,9 @@ static void buildIpConfigScreen() {
 
   ipDhcpSwitch = lv_switch_create(scrIpConfig);
   lv_obj_align(ipDhcpSwitch, LV_ALIGN_TOP_RIGHT, -8, 8);
-  lv_obj_add_state(ipDhcpSwitch, LV_STATE_CHECKED);  // DHCP por padrão
+  lv_obj_t* dhcpLbl = lv_label_create(scrIpConfig);
+  lv_label_set_text(dhcpLbl, "DHCP");  // ligado = DHCP (automático); desligado = IP fixo
+  lv_obj_align_to(dhcpLbl, ipDhcpSwitch, LV_ALIGN_OUT_LEFT_MID, -6, 0);
 
   lv_obj_t* col = lv_obj_create(scrIpConfig);
   lv_obj_set_size(col, SCREEN_W - 20, SCREEN_H - 60);
@@ -744,7 +773,16 @@ static void buildIpConfigScreen() {
   lv_obj_add_event_cb(saveBtn, onIpSave, LV_EVENT_CLICKED, nullptr);
 }
 
+// Carrega o que está gravado — antes a tela abria sempre em DHCP com campos vazios, e um
+// "Salvar" sem mexer em nada apagava o IP fixo configurado.
 static void showIpConfig() {
+  storage::StaticIpConfig cfg = storage::loadStaticIp();
+  if (cfg.enabled) lv_obj_clear_state(ipDhcpSwitch, LV_STATE_CHECKED);
+  else lv_obj_add_state(ipDhcpSwitch, LV_STATE_CHECKED);
+  lv_textarea_set_text(ipAddrArea, cfg.enabled ? cfg.ip.toString().c_str() : "");
+  lv_textarea_set_text(ipGwArea, cfg.enabled ? cfg.gateway.toString().c_str() : "");
+  lv_textarea_set_text(ipMaskArea, cfg.enabled ? cfg.subnet.toString().c_str() : "255.255.255.0");
+  lv_textarea_set_text(ipDnsArea, cfg.enabled ? cfg.dns.toString().c_str() : "");
   lv_scr_load(scrIpConfig);
 }
 
