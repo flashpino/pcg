@@ -564,12 +564,22 @@ static void showWifiList() {
   // ela vive em begin/backoff — é justamente lá que quem abre a tela de WiFi perde a corrida.
   delay(400);
   esp_task_wdt_reset();
+  // pauseForScan segura a NOSSA task, mas não o autoReconnect do driver: desconectado, ele segue
+  // fazendo scans de conexão por conta própria, e desde o 1.1.49 (WIFI_ALL_CHANNEL_SCAN) cada um
+  // varre os 13 canais — mais que os ~1,3s de retry que havia aqui. Resultado em campo: n=-2
+  // st=1 justamente ao tentar trocar de rede com o SSID salvo fora de alcance. Sem conexão ativa
+  // não há o que perder: cancela a tentativa do driver antes de escanear.
+  if (WiFi.status() != WL_CONNECTED) {
+    WiFi.disconnect();
+    delay(300);
+  }
   // Retry em n <= 0, não só n < 0: rádio disputado às vezes devolve 0 redes em vez de
   // WIFI_SCAN_FAILED, e aí a tela dizia "nenhuma rede encontrada" sem tentar de novo.
+  // 6 tentativas com 500ms entre elas cobrem uma varredura completa de conexão do driver.
   int16_t n = WIFI_SCAN_FAILED;
-  for (int attempt = 0; attempt < 3 && n <= 0; attempt++) {
+  for (int attempt = 0; attempt < 6 && n <= 0; attempt++) {
     esp_task_wdt_reset();
-    if (attempt > 0) delay(300);
+    if (attempt > 0) delay(500);
     n = WiFi.scanNetworks(false, true);
     Serial.printf("[wifi-scan] attempt=%d n=%d mode=%d status=%d\n", attempt, n, WiFi.getMode(), WiFi.status());
   }
