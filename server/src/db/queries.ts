@@ -279,6 +279,18 @@ export const updateSensor = (id: number, patch: SensorUpdate) => {
     .then((r) => r.rows[0]);
 };
 
+// Retenção de 30 dias do histórico de alertas. Só apaga os resolvidos — alerta ainda firing
+// continua valendo. As notifications saem no mesmo statement (a FK notifications.alert_id é
+// NO ACTION, checada só no fim do statement), então é atômico sem transação explícita.
+export const purgeOldAlerts = (): Promise<number> =>
+  pool
+    .query(
+      `WITH old AS (SELECT id FROM alerts WHERE state = 'resolved' AND resolved_at < now() - interval '30 days'),
+            n AS (DELETE FROM notifications WHERE alert_id IN (SELECT id FROM old))
+       DELETE FROM alerts WHERE id IN (SELECT id FROM old)`,
+    )
+    .then((r) => r.rowCount ?? 0);
+
 // Apaga em cascata os filhos (notifications -> alerts) antes do sensor, numa transação —
 // as FKs alerts.sensor_id / notifications.alert_id não têm ON DELETE CASCADE, então sem isso
 // o DELETE do sensor viola a constraint. Tudo ou nada: se algo falhar, rollback.

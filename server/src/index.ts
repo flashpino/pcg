@@ -7,6 +7,7 @@ import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { isAuthorized, isPublicRoute } from './authz.js';
 import { migrate, pool, seedAdmin, seedMessageTemplates, seedSettings } from './db/index.js';
+import { purgeOldAlerts } from './db/queries.js';
 import { adminsRoutes } from './routes/admins.js';
 import { alertsRoutes } from './routes/alerts.js';
 import { authRoutes } from './routes/auth.js';
@@ -114,4 +115,11 @@ await startNotifier();
 app.log.info('notifier ok');
 await registerTelegramWebhook();
 startConnectivitySweep(app.log);
+// Limpeza do histórico de alertas com mais de 30 dias — no boot e a cada 24h.
+const purgeAlerts = () =>
+  purgeOldAlerts()
+    .then((n) => n > 0 && app.log.info(`${n} alertas antigos removidos`))
+    .catch((err) => app.log.error({ err }, 'purgeOldAlerts falhou'));
+purgeAlerts();
+setInterval(purgeAlerts, 24 * 60 * 60 * 1000);
 await app.listen({ port: Number(process.env.PORT ?? 3000), host: '0.0.0.0' });
